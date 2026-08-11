@@ -1,0 +1,106 @@
+services:
+  abi:
+    build:
+      context: ${ABI_REPO_PATH:-../abi_executor_bot}
+    image: bbb-stack/abi:local
+    ports:
+      - "127.0.0.1:8787:8787"
+    environment:
+      ABI_HOST: "0.0.0.0"
+      ABI_PORT: "8787"
+      ABI_DRY_RUN: "true"
+      ABI_LIVE_TRADING_ENABLED: "false"
+      ABI_ENTRY_PACKAGE_CORRELATION_PATH: "/app/var/abi_entry_package_correlation.jsonl"
+      BYBIT_ENV: "testnet"
+      BYBIT_ACCOUNT_TYPE: "UNIFIED"
+      BYBIT_RECV_WINDOW: "5000"
+      BYBIT_CATEGORY: "linear"
+      BYBIT_SETTLE_COIN: "USDT"
+      BYBIT_TRIGGER_BY: "LastPrice"
+    volumes:
+      - type: bind
+        source: ${BBB_DATA_ROOT:?BBB_DATA_ROOT must be set}/abi
+        target: /app/var
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8787/health').then((r)=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  strategy-engine:
+    build:
+      context: ${STRATEGY_ENGINE_REPO_PATH:-../strategy_engine}
+    image: bbb-stack/strategy-engine:local
+    read_only: true
+    ports:
+      - "127.0.0.1:8090:8090"
+    environment:
+      STRATEGY_ENGINE_HTTP_HOST: "0.0.0.0"
+      STRATEGY_ENGINE_HTTP_PORT: "8090"
+      STRATEGY_ENGINE_MDS_BASE_URL: "http://market-data-service:8080"
+
+  strategy-runtime:
+    build:
+      context: ${STRATEGY_RUNTIME_REPO_PATH:-../strategy_runtime}
+    image: bbb-stack/strategy-runtime:local
+    read_only: true
+    depends_on:
+      abi:
+        condition: service_healthy
+      strategy-engine:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8093:8093"
+    environment:
+      RUNTIME_HOST: "0.0.0.0"
+      RUNTIME_PORT: "8093"
+      RUNTIME_SPECS_PATH: "/runtime/specs"
+      RUNTIME_JOURNAL_PATH: "/runtime/journal/runtime.jsonl"
+      RUNTIME_STRATEGY_ENGINE_BASE_URL: "http://strategy-engine:8090"
+      RUNTIME_ABI_BASE_URL: "http://abi:8787"
+    volumes:
+      - type: bind
+        source: ${BBB_DATA_ROOT:?BBB_DATA_ROOT must be set}/strategy-runtime/specs
+        target: /runtime/specs
+        read_only: true
+      - type: bind
+        source: ${BBB_DATA_ROOT:?BBB_DATA_ROOT must be set}/strategy-runtime/journal
+        target: /runtime/journal
+
+  market-data-service:
+    build:
+      context: ${MDS_REPO_PATH:-../market_data_service}
+    image: bbb-stack/market-data-service:local
+    restart: unless-stopped
+    stop_grace_period: 20s
+    read_only: true
+    depends_on:
+      strategy-runtime:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      MDS_DATABASE_PATH: "/data/market.sqlite3"
+      MDS_MARKETS_CONFIG_PATH: "/app/config/markets.toml"
+      MDS_HTTP_HOST: "0.0.0.0"
+      MDS_HTTP_PORT: "8080"
+      MDS_RUNTIME_WEBHOOK_ENABLED: "true"
+      MDS_STRATEGY_RUNTIME_BASE_URL: "http://strategy-runtime:8093"
+      MDS_STARTUP_BACKFILL_WINDOWS_PER_STREAM: "2"
+      MDS_STARTUP_REPAIR_WINDOWS_PER_STREAM: "2"
+      MDS_REALTIME_RECOVERY_WINDOWS_PER_STREAM: "2"
+    volumes:
+      - type: bind
+        source: ${MDS_REPO_PATH:-../market_data_service}/config/markets.toml
+        target: /app/config/markets.toml
+        read_only: true
+      - type: bind
+        source: ${BBB_DATA_ROOT:?BBB_DATA_ROOT must be set}/market-data
+        target: /data
