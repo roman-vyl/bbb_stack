@@ -1,6 +1,10 @@
 # bbb-live-stack
 
-## ADDED Requirements
+## Purpose
+Define the observable system contract for the local BBB four-service Docker
+Compose stack.
+
+## Requirements
 
 ### Requirement: Four-Service System Composition
 
