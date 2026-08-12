@@ -11,11 +11,13 @@ service APIs, service Dockerfiles, or application behavior.
 
 - Add a system smoke script that starts the existing four-service Compose stack
   with an isolated `BBB_DATA_ROOT`.
-- Reuse the existing Strategy Engine touch-anchor EMA Pullback fixture and seed
-  the required MDS market window through MDS application/storage ingestion.
-- Trigger Runtime's closed-bar webhook and observe Runtime journal, Engine
-  live-entry result, ABI entry-package/correlation behavior, and safe-mode
-  execution boundary.
+- Add a smoke-only Bybit-compatible REST/WebSocket fixture through a Compose
+  override, without changing the base four-service Compose contract.
+- Reuse the existing Strategy Engine touch-anchor EMA Pullback fixture while
+  making MDS reach readiness through its production lower-bound, historical
+  reconciliation, continuity, realtime admission, and notifier lifecycle.
+- Observe Runtime journal, Engine live-entry result, ABI entry-package
+  correlation behavior, and safe-mode execution boundary.
 - Record a verification report for the exact boundary reached in safe ABI mode.
 
 ## Non-Goals

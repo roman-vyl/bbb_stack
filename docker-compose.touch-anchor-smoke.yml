@@ -1,0 +1,55 @@
+services:
+  bybit-fixture:
+    build:
+      context: ${MDS_REPO_PATH:-../market_data_service}
+    image: bbb-stack/market-data-service:local
+    user: "0:0"
+    command: ["python", "/fixture/bybit_touch_anchor_fixture.py"]
+    environment:
+      BYBIT_FIXTURE_HTTP_HOST: "0.0.0.0"
+      BYBIT_FIXTURE_HTTP_PORT: "8088"
+      BYBIT_FIXTURE_WS_HOST: "0.0.0.0"
+      BYBIT_FIXTURE_WS_PORT: "8089"
+      BYBIT_FIXTURE_STATE_PATH: "/fixture-state/state.json"
+    volumes:
+      - type: bind
+        source: ./fixtures
+        target: /fixture
+        read_only: true
+      - type: bind
+        source: ${BBB_DATA_ROOT:?BBB_DATA_ROOT must be set}/bybit-fixture
+        target: /fixture-state
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8088/health', timeout=3).close()",
+        ]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 2s
+
+  market-data-service:
+    depends_on:
+      bybit-fixture:
+        condition: service_healthy
+      strategy-runtime:
+        condition: service_healthy
+    environment:
+      MDS_MARKETS_CONFIG_PATH: "/app/config/markets.toml"
+      MDS_REST_BASE_URL: "http://bybit-fixture:8088"
+      MDS_WEBSOCKET_URL: "ws://bybit-fixture:8089/v5/public/linear"
+      MDS_STARTUP_BACKFILL_WINDOWS_PER_STREAM: "4"
+      MDS_STARTUP_REPAIR_WINDOWS_PER_STREAM: "4"
+      MDS_REALTIME_RECOVERY_WINDOWS_PER_STREAM: "4"
+    volumes:
+      - type: bind
+        source: ${BBB_DATA_ROOT:?BBB_DATA_ROOT must be set}/market-config/markets.toml
+        target: /app/config/markets.toml
+        read_only: true
+      - type: bind
+        source: ${BBB_DATA_ROOT:?BBB_DATA_ROOT must be set}/market-data
+        target: /data

@@ -25,28 +25,37 @@ fixture and SHALL NOT invent simplified strategy logic.
 - **WHEN** the smoke prepares market data
 - **THEN** it SHALL use ticker `BTCUSDT.P`
 - **AND** timeframe `5m`
-- **AND** trigger bar `open_time_ms=3300000`
+- **AND** a timeframe-aligned trigger bar selected by the smoke fixture
 - **AND** a market window sufficient for the existing Strategy Engine fixture.
 
-### Requirement: MDS data path remains real
+### Requirement: MDS lifecycle remains real
 
-The smoke SHALL use MDS application/storage ingestion to prepare the isolated
-market window and SHALL verify the window through MDS HTTP read APIs.
+The smoke SHALL drive MDS through production REST lower-bound discovery,
+historical reconciliation, continuity readiness, WebSocket subscription,
+realtime admission, and committed-bar notification.
 
-#### Scenario: MDS-originated event limitation is explicit
+#### Scenario: Smoke-only Bybit fixture
 
-- **WHEN** production MDS exposes no deterministic HTTP/test seam for injecting
-  one realtime committed websocket candle
-- **THEN** the smoke MAY inject exactly one canonical closed-bar webhook at
-  Runtime
-- **AND** the report SHALL label this as one-boundary injection rather than a
-  fully MDS-originated vertical.
+- **WHEN** the smoke stack is started
+- **THEN** a smoke-only Bybit-compatible fixture MAY be added by Compose override
+- **AND** MDS SHALL be pointed at it through `MDS_REST_BASE_URL` and
+  `MDS_WEBSOCKET_URL`
+- **AND** the fixture SHALL implement only the REST and WebSocket protocol
+  subset consumed by the current production MDS adapters.
+
+#### Scenario: MDS-originated trigger
+
+- **WHEN** the fixture emits a confirmed WebSocket kline after MDS admission
+- **THEN** MDS SHALL classify it through its production realtime ingestion path
+- **AND** MDS SHALL notify Runtime through the real committed-bar notifier
+- **AND** the smoke SHALL NOT directly POST the trigger event to Runtime.
 
 ### Requirement: Runtime routes through Engine and ABI
 
-The smoke SHALL prove Runtime accepts the closed-bar event, dispatches to the
-Strategy Engine live-entry endpoint, receives a singular desired entry, and
-attempts the ABI entry-package endpoint through production HTTP boundaries.
+The smoke SHALL prove Runtime receives the MDS-originated closed-bar event,
+dispatches to the Strategy Engine live-entry endpoint, receives a singular
+desired entry, and attempts the ABI entry-package endpoint through production
+HTTP boundaries.
 
 #### Scenario: Touch-anchor desired entry
 
@@ -66,7 +75,7 @@ no credentials.
 
 - **WHEN** ABI dry-run mode does not return `entry_package_applied`
 - **THEN** the smoke SHALL NOT enable live trading or fabricate exchange fill
-- **AND** it SHALL report the exact first boundary reached through ABI response,
+- **AND** it SHALL report the exact safe boundary reached through ABI response,
   correlation record, Runtime journal, and logs.
 
 ### Requirement: Observable evidence is persisted
@@ -76,8 +85,15 @@ chosen fixture, market window preparation, trigger mode, Runtime journal
 outcome, Engine desired entry summary, ABI acknowledgement/error, correlation
 record status, and final verdict.
 
-#### Scenario: Verification fails closed
+#### Scenario: Verification fails closed before accepted safe boundary
 
 - **WHEN** an expected observable contract result is absent
 - **THEN** the smoke script SHALL exit non-zero
 - **AND** the report SHALL identify the first failing boundary.
+
+#### Scenario: Verification reaches safe ABI boundary
+
+- **WHEN** Runtime reaches ABI entry-package and ABI blocks live execution due
+  to safe dry-run configuration
+- **THEN** the smoke script MAY exit zero
+- **AND** the report SHALL use verdict `TOUCH_ANCHOR_VERTICAL_SMOKE_PASS`.

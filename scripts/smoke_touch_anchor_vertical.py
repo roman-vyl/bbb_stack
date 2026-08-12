@@ -2,9 +2,9 @@
 """Run the BBB touch-anchor vertical smoke against the four-service stack.
 
 This is an orchestration/observation script for bbb_stack. It prepares an
-isolated BBB_DATA_ROOT, seeds MDS through its existing application/storage
-ingestion path, starts the ratified Docker Compose stack, triggers Runtime's
-closed-bar webhook, and reports the first real boundary reached.
+isolated BBB_DATA_ROOT, starts the ratified Docker Compose stack with a
+smoke-only Bybit-compatible upstream fixture, waits for MDS to emit a genuine
+committed-bar webhook, and reports the first real boundary reached.
 """
 
 from __future__ import annotations
@@ -27,7 +27,6 @@ from typing import Any
 TICKER = "BTCUSDT.P"
 TIMEFRAME = "5m"
 STEP_MS = 300_000
-TRIGGER_OPEN_TIME_MS = 3_300_000
 STRATEGY_ID = "ema_pullback"
 
 RAW_SPEC: dict[str, Any] = {
@@ -110,7 +109,7 @@ def main() -> int:
     )
     create_smoke_layout(smoke_root)
     write_runtime_deployment(smoke_root)
-    seed_mds_window(smoke_root / "market-data" / "market.sqlite3", mds_repo)
+    write_mds_smoke_market_config(smoke_root)
 
     env = os.environ.copy()
     env.update(
@@ -127,8 +126,7 @@ def main() -> int:
         "smoke_root": str(smoke_root),
         "ticker": TICKER,
         "timeframe": TIMEFRAME,
-        "trigger_open_time_ms": TRIGGER_OPEN_TIME_MS,
-        "trigger_mode": "one-boundary Runtime webhook injection",
+        "trigger_mode": "MDS-originated via fixture WebSocket -> MDS notifier",
         "fixture": "strategy_engine tests/test_live_entry_projection.py touch_anchor fixture",
     }
 
@@ -136,9 +134,11 @@ def main() -> int:
         compose(args, env, "config", check=True)
         compose(args, env, "up", "-d", "--build", check=True)
         wait_for_stack(args, env, args.timeout_seconds)
+        wait_for_mds_ready(args.timeout_seconds)
 
         health = {
             "mds_health": get_json("http://127.0.0.1:8080/health").body,
+            "mds_readiness": get_json("http://127.0.0.1:8080/readiness").body,
             "engine_health": get_json("http://127.0.0.1:8090/health").body,
             "runtime_live": get_json("http://127.0.0.1:8093/health/live").body,
             "runtime_ready": get_json("http://127.0.0.1:8093/health/ready").body,
@@ -148,14 +148,31 @@ def main() -> int:
         report["health"] = health
         assert_abi_safe_mode(health["abi_execution_mode"])
 
+        fixture_state = wait_for_fixture_trigger(
+            smoke_root / "bybit-fixture" / "state.json",
+            args.timeout_seconds,
+        )
+        report["bybit_fixture"] = fixture_state
+        trigger_open_time_ms = int(fixture_state["websocket_trigger_open_time_ms"])
+        launch_time_ms = int(fixture_state["launch_time_ms"])
+        report["trigger_open_time_ms"] = trigger_open_time_ms
+
+        journal_path = smoke_root / "strategy-runtime" / "journal" / "runtime.jsonl"
+        records = wait_for_runtime_journal(
+            journal_path,
+            trigger_open_time_ms,
+            args.timeout_seconds,
+        )
+        report["runtime_journal"] = summarize_journal(records)
+
         mds_window_result = get_json(
             "http://127.0.0.1:8080/v1/candles?"
             + urllib.parse.urlencode(
                 {
                     "ticker": TICKER,
                     "timeframe": TIMEFRAME,
-                    "from_ms": 0,
-                    "to_ms": TRIGGER_OPEN_TIME_MS + STEP_MS,
+                    "from_ms": launch_time_ms,
+                    "to_ms": trigger_open_time_ms + STEP_MS,
                 }
             )
         )
@@ -164,14 +181,17 @@ def main() -> int:
                 "status": mds_window_result.status,
                 "body": mds_window_result.body,
             }
-            report["boundary"] = "MDS_STREAM_NOT_READY_FOR_FINITE_FIXTURE"
+            report["boundary"] = "MDS_STREAM_NOT_READY_AFTER_FIXTURE_LIFECYCLE"
             print(json.dumps(report, indent=2, sort_keys=True))
             raise SmokeFailure(
-                "MDS did not serve the deterministic fixture window through /v1/candles"
+                "MDS did not serve the fixture lifecycle window through /v1/candles"
             )
         mds_window = mds_window_result.body
-        if len(mds_window.get("candles", [])) != 12:
-            raise SmokeFailure(f"MDS returned unexpected candle count: {mds_window}")
+        expected_candles = ((trigger_open_time_ms - launch_time_ms) // STEP_MS) + 1
+        if len(mds_window.get("candles", [])) != expected_candles:
+            raise SmokeFailure(
+                f"MDS returned unexpected candle count expected={expected_candles}: {mds_window}"
+            )
         report["mds_window"] = {
             "from_ms": mds_window["from_ms"],
             "to_ms": mds_window["to_ms"],
@@ -186,7 +206,7 @@ def main() -> int:
                 "raw_spec": RAW_SPEC,
                 "ticker": TICKER,
                 "base_timeframe": TIMEFRAME,
-                "target_bar_open_time_ms": TRIGGER_OPEN_TIME_MS,
+                "target_bar_open_time_ms": trigger_open_time_ms,
             },
         )
         if engine_result.status != 200:
@@ -196,26 +216,9 @@ def main() -> int:
             raise SmokeFailure(f"Engine did not return desired_entry: {engine_result.body}")
         if desired_entry.get("side") != "long":
             raise SmokeFailure(f"unexpected desired_entry side: {desired_entry}")
+        if desired_entry.get("source_plan_bar_open_time_ms") != trigger_open_time_ms:
+            raise SmokeFailure(f"desired_entry did not target trigger bar: {desired_entry}")
         report["engine_desired_entry"] = desired_entry
-
-        trigger_result = post_json(
-            "http://127.0.0.1:8093/v1/webhooks/closed-bar",
-            {
-                "instrument": TICKER,
-                "timeframe": TIMEFRAME,
-                "open_time_ms": TRIGGER_OPEN_TIME_MS,
-            },
-        )
-        report["runtime_webhook_response"] = {
-            "status": trigger_result.status,
-            "body": trigger_result.body,
-        }
-        if trigger_result.status != 200 or trigger_result.body.get("status") != "accepted":
-            raise SmokeFailure(f"Runtime webhook did not accept event: {trigger_result}")
-
-        journal_path = smoke_root / "strategy-runtime" / "journal" / "runtime.jsonl"
-        records = wait_for_runtime_journal(journal_path, args.timeout_seconds)
-        report["runtime_journal"] = summarize_journal(records)
 
         correlation_path = smoke_root / "abi" / "abi_entry_package_correlation.jsonl"
         correlations = read_jsonl(correlation_path)
@@ -243,9 +246,11 @@ def main() -> int:
 def create_smoke_layout(root: Path) -> None:
     for relative in (
         "market-data",
+        "market-config",
         "strategy-runtime/specs",
         "strategy-runtime/journal",
         "abi",
+        "bybit-fixture",
     ):
         (root / relative).mkdir(parents=True, exist_ok=True)
 
@@ -262,59 +267,24 @@ def write_runtime_deployment(root: Path) -> None:
     path.write_text(json.dumps(deployment, indent=2, sort_keys=True), encoding="utf-8")
 
 
-def seed_mds_window(database: Path, mds_repo: Path) -> None:
-    sys.path.insert(0, str(mds_repo / "src"))
-    from dataclasses import replace
+def write_mds_smoke_market_config(root: Path) -> None:
+    (root / "market-config" / "markets.toml").write_text(
+        """
+schema_version = 1
 
-    from market_data_service.adapters.sqlite import (
-        SqliteUnitOfWork,
-        initialize_database,
-        register_stream,
-    )
-    from market_data_service.application.ingest import IngestObservedCandle
-    from market_data_service.domain import (
-        InstrumentKey,
-        ObservationSource,
-        ObservedCandle,
-        StreamKey,
-    )
-    from market_data_service.domain.stream_state import StreamLifecycleState
+[source]
+venue = "bybit"
+category = "linear"
 
-    stream = StreamKey(InstrumentKey(TICKER), TIMEFRAME)
-    initialize_database(database)
-    register_stream(database, stream, exchange_symbol="BTCUSDT", now_ms=1)
-    ingest = IngestObservedCandle(lambda: SqliteUnitOfWork(database))
-    for index in range(12):
-        open_time_ms = index * STEP_MS
-        ingest.execute(
-            ObservedCandle(
-                stream=stream,
-                open_time_ms=open_time_ms,
-                close_time_ms=open_time_ms + STEP_MS - 1,
-                open=str(index + 1),
-                high=str(index + 2),
-                low=str(index),
-                close=str(index + 1),
-                volume="10",
-                confirmed=True,
-                observed_at_ms=open_time_ms + STEP_MS,
-                source=ObservationSource.BYBIT_REST,
-            ),
-            committed_at_ms=open_time_ms + STEP_MS + 1,
-        )
-    with SqliteUnitOfWork(database) as unit_of_work:
-        state = unit_of_work.get_stream_state(stream)
-        unit_of_work.save_stream_state(
-            replace(
-                state,
-                state=StreamLifecycleState.READY,
-                earliest_available_open_time_ms=0,
-                latest_committed_open_time_ms=TRIGGER_OPEN_TIME_MS,
-                state_changed_at_ms=TRIGGER_OPEN_TIME_MS + STEP_MS,
-                updated_at_ms=TRIGGER_OPEN_TIME_MS + STEP_MS,
-            )
-        )
-        unit_of_work.commit()
+[[instruments]]
+ticker = "BTCUSDT.P"
+exchange_symbol = "BTCUSDT"
+enabled = true
+canonical_timeframes = ["5m"]
+history_policy = "full_available"
+""".lstrip(),
+        encoding="utf-8",
+    )
 
 
 def compose(
@@ -328,6 +298,10 @@ def compose(
         "compose",
         "--project-name",
         args.project_name,
+        "-f",
+        "docker-compose.yml",
+        "-f",
+        "docker-compose.touch-anchor-smoke.yml",
         *command,
     ]
     return subprocess.run(
@@ -343,7 +317,7 @@ def compose(
 
 def wait_for_stack(args: argparse.Namespace, env: dict[str, str], timeout_seconds: float) -> None:
     deadline = time.monotonic() + timeout_seconds
-    expected = {"abi", "strategy-engine", "strategy-runtime", "market-data-service"}
+    expected = {"abi", "strategy-engine", "strategy-runtime", "market-data-service", "bybit-fixture"}
     while time.monotonic() < deadline:
         result = compose(args, env, "ps", "--format", "json", check=True)
         rows = parse_compose_ps(result.stdout)
@@ -359,6 +333,30 @@ def wait_for_stack(args: argparse.Namespace, env: dict[str, str], timeout_second
                 return
         time.sleep(2)
     raise SmokeFailure("stack did not reach running/healthy state before timeout")
+
+
+def wait_for_mds_ready(timeout_seconds: float) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    last: dict[str, Any] | None = None
+    while time.monotonic() < deadline:
+        response = get_json("http://127.0.0.1:8080/readiness")
+        last = response.body
+        if response.status == 200 and response.body.get("ready") is True:
+            return
+        time.sleep(1)
+    raise SmokeFailure(f"MDS did not reach readiness before timeout: {last}")
+
+
+def wait_for_fixture_trigger(path: Path, timeout_seconds: float) -> dict[str, Any]:
+    deadline = time.monotonic() + timeout_seconds
+    last: dict[str, Any] | None = None
+    while time.monotonic() < deadline:
+        if path.exists():
+            last = json.loads(path.read_text(encoding="utf-8"))
+            if last.get("websocket_sent") and last.get("websocket_trigger_open_time_ms") is not None:
+                return last
+        time.sleep(1)
+    raise SmokeFailure(f"Bybit fixture did not send websocket trigger before timeout: {last}")
 
 
 def parse_compose_ps(output: str) -> list[dict[str, Any]]:
@@ -411,14 +409,18 @@ def assert_abi_safe_mode(payload: dict[str, Any]) -> None:
         raise SmokeFailure(f"ABI live execution boundary unclear: {payload}")
 
 
-def wait_for_runtime_journal(path: Path, timeout_seconds: float) -> list[dict[str, Any]]:
+def wait_for_runtime_journal(
+    path: Path,
+    open_time_ms: int,
+    timeout_seconds: float,
+) -> list[dict[str, Any]]:
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
         records = read_jsonl(path)
         matching = [
             item
             for item in records
-            if item.get("payload", {}).get("open_time_ms") == TRIGGER_OPEN_TIME_MS
+            if item.get("payload", {}).get("open_time_ms") == open_time_ms
         ]
         if any(item.get("event_type") == "committed_bar_orchestration_completed" for item in matching):
             return matching
