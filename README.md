@@ -23,6 +23,28 @@ docker compose config
 docker compose up --build
 ```
 
+The base composition is safe by default: ABI runs dry-run, live trading is
+disabled, and no exchange credential file is loaded.
+
+For a Bybit Demo execution smoke, keep data and secrets outside the repository:
+
+```sh
+export BBB_DATA_ROOT=/Users/mcroma/BBB_data
+export BBB_SECRETS_ROOT=/Users/mcroma/BBB_secrets
+mkdir -p "$BBB_DATA_ROOT"/{abi,market-data,strategy-runtime/journal,strategy-runtime/specs}
+mkdir -p "$BBB_SECRETS_ROOT"/abi
+$EDITOR "$BBB_SECRETS_ROOT"/abi/bybit-demo.env
+docker compose -f docker-compose.yml -f docker-compose.demo.yml up --build
+```
+
+The Demo secret file is expected at
+`$BBB_SECRETS_ROOT/abi/bybit-demo.env` and should contain:
+
+```sh
+BYBIT_API_KEY=...
+BYBIT_API_SECRET=...
+```
+
 The four service build contexts default to sibling repositories:
 
 - `MDS_REPO_PATH=../market_data_service`
