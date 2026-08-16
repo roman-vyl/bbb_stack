@@ -27,15 +27,15 @@ jobs:
       - name: Login to GHCR
         run: |
           mkdir -p "$DOCKER_CONFIG"
-          echo '{"credsStore":""}' > "$DOCKER_CONFIG/config.json"
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          auth=$(printf '%s:%s' "${{ github.actor }}" "${{ secrets.GITHUB_TOKEN }}" | base64)
+          printf '{"auths":{"ghcr.io":{"auth":"%s"}}}' "$auth" > "$DOCKER_CONFIG/config.json"
 
-      - name: Pull images
+      - name: Pull images (linux/amd64)
         run: |
-          docker pull "$MDS_IMAGE"
-          docker pull "$STRATEGY_ENGINE_IMAGE"
-          docker pull "$STRATEGY_RUNTIME_IMAGE"
-          docker pull "$ABI_IMAGE"
+          docker pull --platform linux/amd64 "$MDS_IMAGE"
+          docker pull --platform linux/amd64 "$STRATEGY_ENGINE_IMAGE"
+          docker pull --platform linux/amd64 "$STRATEGY_RUNTIME_IMAGE"
+          docker pull --platform linux/amd64 "$ABI_IMAGE"
 
       - name: Validate compose configuration
         run: |

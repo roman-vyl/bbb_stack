@@ -1,12 +1,16 @@
 services:
   abi:
     image: ${ABI_IMAGE:?ABI_IMAGE must be set (see deploy/images.env)}
+    platform: linux/amd64
 
   strategy-engine:
     image: ${STRATEGY_ENGINE_IMAGE:?STRATEGY_ENGINE_IMAGE must be set (see deploy/images.env)}
+    platform: linux/amd64
 
   strategy-runtime:
     image: ${STRATEGY_RUNTIME_IMAGE:?STRATEGY_RUNTIME_IMAGE must be set (see deploy/images.env)}
+    platform: linux/amd64
 
   market-data-service:
     image: ${MDS_IMAGE:?MDS_IMAGE must be set (see deploy/images.env)}
+    platform: linux/amd64
