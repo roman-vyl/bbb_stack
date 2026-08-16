@@ -6,14 +6,14 @@ This repository owns Docker Compose wiring, system configuration, lifecycle orde
 system smoke checks, and system-level OpenSpec only. It does not vendor service source,
 service Dockerfiles, or application contracts.
 
-## Baseline
+## Deployed image versions
 
-- `roman-vyl/market_data_service`: `0389837df03e48d0ccc17b4255e1f97a33cd5277`
-- `roman-vyl/strategy_engine`: `4136d298531ae05c926df7aec04649c9e047c0d9`
-- `roman-vyl/strategy_runtime`: `d1872be4531b5a2916d439fa00af9c08d9466220`
-- `roman-vyl/abi_executor_bot`: `5420c289590337d8d0e011b900bc2b2c177cff8f`
+[`deploy/images.env`](deploy/images.env) is the source of truth for which
+four immutable GHCR images (tagged by full Git commit SHA) make up the
+current BBB Demo deployment. Update it via a normal PR after a service's
+CI has published a new image on its `main`.
 
-## Usage
+## Usage (local source build, for development)
 
 Set a data root before rendering or starting the stack:
 
@@ -51,3 +51,23 @@ The four service build contexts default to sibling repositories:
 - `STRATEGY_ENGINE_REPO_PATH=../strategy_engine`
 - `STRATEGY_RUNTIME_REPO_PATH=../strategy_runtime`
 - `ABI_REPO_PATH=../abi_executor_bot`
+
+## Demo deployment (GHCR images, no local build)
+
+The `Deploy Demo` GitHub Actions workflow (manual `workflow_dispatch`,
+self-hosted Mac runner) pulls the exact images pinned in
+[`deploy/images.env`](deploy/images.env) and recreates the stack without
+building from source:
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.demo.yml -f docker-compose.deploy.yml \
+  --env-file deploy/images.env up -d --no-build --remove-orphans
+```
+
+It requires `BBB_DATA_ROOT` and `BBB_SECRETS_ROOT` already set in the
+runner's own environment (not GitHub secrets) and never runs `down -v` —
+durable state (MDS data, Runtime journal/state, ABI var) survives
+recreate. The workflow does not send bars, place/cancel Bybit orders, or
+change strategy specs; ABI stays in Demo mode (`BYBIT_ENV=demo`,
+dry-run disabled only via the existing `docker-compose.demo.yml`
+override, same as manual Demo runs today).
