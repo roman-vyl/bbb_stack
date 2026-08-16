@@ -1,0 +1,111 @@
+name: Deploy Demo
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check required local environment
+        run: |
+          : "${BBB_DATA_ROOT:?BBB_DATA_ROOT must be set in the runner environment}"
+          : "${BBB_SECRETS_ROOT:?BBB_SECRETS_ROOT must be set in the runner environment}"
+
+      - name: Load image manifest
+        run: |
+          cat deploy/images.env >> "$GITHUB_ENV"
+
+      - name: Login to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Pull images
+        run: |
+          docker pull "$MDS_IMAGE"
+          docker pull "$STRATEGY_ENGINE_IMAGE"
+          docker pull "$STRATEGY_RUNTIME_IMAGE"
+          docker pull "$ABI_IMAGE"
+
+      - name: Validate compose configuration
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.demo.yml -f docker-compose.deploy.yml --env-file deploy/images.env config --quiet
+
+      - name: Recreate stack (no volume removal)
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.demo.yml -f docker-compose.deploy.yml --env-file deploy/images.env up -d --no-build --remove-orphans
+
+      - name: Wait for health/readiness
+        run: |
+          set -euo pipefail
+          services="abi strategy-engine strategy-runtime market-data-service"
+          for i in $(seq 1 30); do
+            all_ok=true
+            for s in $services; do
+              cid=$(docker compose -f docker-compose.yml -f docker-compose.demo.yml -f docker-compose.deploy.yml --env-file deploy/images.env ps -q "$s")
+              status=$(docker inspect --format '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo "unknown")
+              if [ "$status" != "healthy" ]; then
+                all_ok=false
+              fi
+            done
+            if [ "$all_ok" = true ]; then
+              echo "All services healthy."
+              break
+            fi
+            sleep 5
+          done
+          if [ "$all_ok" != true ]; then
+            echo "::error::One or more services failed to become healthy in time"
+            docker compose -f docker-compose.yml -f docker-compose.demo.yml -f docker-compose.deploy.yml --env-file deploy/images.env ps
+            exit 1
+          fi
+
+      - name: Verify Runtime liveness
+        run: |
+          curl -fsS http://127.0.0.1:8093/health/live > /dev/null
+          curl -fsS http://127.0.0.1:8093/health/ready > /dev/null
+
+      - name: Verify running image refs match manifest
+        run: |
+          set -euo pipefail
+          check() {
+            svc="$1"; expected="$2"
+            cid=$(docker compose -f docker-compose.yml -f docker-compose.demo.yml -f docker-compose.deploy.yml --env-file deploy/images.env ps -q "$svc")
+            actual=$(docker inspect --format '{{.Config.Image}}' "$cid")
+            if [ "$actual" != "$expected" ]; then
+              echo "::error::$svc image mismatch: running=$actual expected=$expected"
+              exit 1
+            fi
+            echo "$svc OK: $actual"
+          }
+          check abi "$ABI_IMAGE"
+          check strategy-engine "$STRATEGY_ENGINE_IMAGE"
+          check strategy-runtime "$STRATEGY_RUNTIME_IMAGE"
+          check market-data-service "$MDS_IMAGE"
+
+      - name: Verify ABI stays in Demo mode
+        run: |
+          set -euo pipefail
+          cid=$(docker compose -f docker-compose.yml -f docker-compose.demo.yml -f docker-compose.deploy.yml --env-file deploy/images.env ps -q abi)
+          bybit_env=$(docker exec "$cid" printenv BYBIT_ENV)
+          if [ "$bybit_env" != "demo" ]; then
+            echo "::error::ABI BYBIT_ENV is not demo (got: $bybit_env)"
+            exit 1
+          fi
+          echo "ABI BYBIT_ENV confirmed: demo"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Deploy Demo summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- MDS: $MDS_IMAGE" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Strategy Engine: $STRATEGY_ENGINE_IMAGE" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Strategy Runtime: $STRATEGY_RUNTIME_IMAGE" >> "$GITHUB_STEP_SUMMARY"
+          echo "- ABI: $ABI_IMAGE" >> "$GITHUB_STEP_SUMMARY"
+          echo "- BBB_DATA_ROOT: (unset in log by design)" >> "$GITHUB_STEP_SUMMARY"
