@@ -14,3 +14,10 @@ services:
   market-data-service:
     image: ${MDS_IMAGE:?MDS_IMAGE must be set (see deploy/images.env)}
     platform: linux/amd64
+    # No sibling market_data_service checkout exists in deploy mode, so
+    # drop the base file's config bind mount and use the markets.toml
+    # already baked into the image at build time.
+    volumes:
+      - type: bind
+        source: ${BBB_DATA_ROOT:?BBB_DATA_ROOT must be set}/market-data
+        target: /data
