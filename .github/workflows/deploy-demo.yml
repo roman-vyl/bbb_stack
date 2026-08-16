@@ -10,6 +10,8 @@ permissions:
 jobs:
   deploy:
     runs-on: self-hosted
+    env:
+      DOCKER_CONFIG: ${{ github.workspace }}/.docker-config
     steps:
       - uses: actions/checkout@v4
 
@@ -23,7 +25,10 @@ jobs:
           grep -v -e '^#' -e '^$' deploy/images.env >> "$GITHUB_ENV"
 
       - name: Login to GHCR
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+        run: |
+          mkdir -p "$DOCKER_CONFIG"
+          echo '{"credsStore":""}' > "$DOCKER_CONFIG/config.json"
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       - name: Pull images
         run: |
@@ -109,3 +114,7 @@ jobs:
           echo "- Strategy Runtime: $STRATEGY_RUNTIME_IMAGE" >> "$GITHUB_STEP_SUMMARY"
           echo "- ABI: $ABI_IMAGE" >> "$GITHUB_STEP_SUMMARY"
           echo "- BBB_DATA_ROOT: (unset in log by design)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Clean up local docker credentials
+        if: always()
+        run: rm -rf "$DOCKER_CONFIG"
