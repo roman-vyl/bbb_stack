@@ -113,3 +113,25 @@ services:
       - type: bind
         source: ${BBB_DATA_ROOT:?BBB_DATA_ROOT must be set}/market-data
         target: /data
+
+  research-service:
+    build:
+      context: ${RESEARCH_REPO_PATH:-../research_service}
+    image: bbb-stack/research-service:local
+    read_only: true
+    depends_on:
+      strategy-engine:
+        condition: service_healthy
+      market-data-service:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8095:8080"
+    environment:
+      RESEARCH_HOST: "0.0.0.0"
+      RESEARCH_PORT: "8080"
+      RESEARCH_STRATEGY_ENGINE_URL: "http://strategy-engine:8090"
+      RESEARCH_MARKET_DATA_URL: "http://market-data-service:8080"
+    volumes:
+      - type: bind
+        source: ${BBB_DATA_ROOT:?BBB_DATA_ROOT must be set}/research
+        target: /data

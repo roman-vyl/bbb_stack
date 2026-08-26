@@ -31,7 +31,7 @@ For a Bybit Demo execution smoke, keep data and secrets outside the repository:
 ```sh
 export BBB_DATA_ROOT=/Users/mcroma/BBB_data
 export BBB_SECRETS_ROOT=/Users/mcroma/BBB_secrets
-mkdir -p "$BBB_DATA_ROOT"/{abi,market-data,strategy-runtime/journal,strategy-runtime/specs}
+mkdir -p "$BBB_DATA_ROOT"/{abi,market-data,strategy-runtime/journal,strategy-runtime/specs,research/runs,research/configs}
 mkdir -p "$BBB_SECRETS_ROOT"/abi
 $EDITOR "$BBB_SECRETS_ROOT"/abi/bybit-demo.env
 docker compose -f docker-compose.yml -f docker-compose.demo.yml up --build
@@ -45,12 +45,18 @@ BYBIT_API_KEY=...
 BYBIT_API_SECRET=...
 ```
 
-The four service build contexts default to sibling repositories:
+The service build contexts default to sibling repositories:
 
 - `MDS_REPO_PATH=../market_data_service`
 - `STRATEGY_ENGINE_REPO_PATH=../strategy_engine`
 - `STRATEGY_RUNTIME_REPO_PATH=../strategy_runtime`
 - `ABI_REPO_PATH=../abi_executor_bot`
+- `RESEARCH_REPO_PATH=../research_service`
+
+`research-service` is not yet part of the pinned `deploy/images.env` GHCR
+manifest or `docker-compose.deploy.yml` — it has no published image yet,
+so it only runs in local source-build mode (`docker-compose.yml`, the
+default target above).
 
 ## Demo deployment (GHCR images, no local build)
 
