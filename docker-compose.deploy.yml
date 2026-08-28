@@ -21,3 +21,7 @@ services:
       - type: bind
         source: ${BBB_DATA_ROOT:?BBB_DATA_ROOT must be set}/market-data
         target: /data
+
+  research-service:
+    image: ${RESEARCH_IMAGE:?RESEARCH_IMAGE must be set (see deploy/images.env)}
+    platform: linux/amd64

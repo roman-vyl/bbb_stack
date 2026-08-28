@@ -9,7 +9,7 @@ service Dockerfiles, or application contracts.
 ## Deployed image versions
 
 [`deploy/images.env`](deploy/images.env) is the source of truth for which
-four immutable GHCR images (tagged by full Git commit SHA) make up the
+five immutable GHCR images (tagged by full Git commit SHA) make up the
 current BBB Demo deployment. Update it via a normal PR after a service's
 CI has published a new image on its `main`.
 
@@ -53,10 +53,12 @@ The service build contexts default to sibling repositories:
 - `ABI_REPO_PATH=../abi_executor_bot`
 - `RESEARCH_REPO_PATH=../research_service`
 
-`research-service` is not yet part of the pinned `deploy/images.env` GHCR
-manifest or `docker-compose.deploy.yml` — it has no published image yet,
-so it only runs in local source-build mode (`docker-compose.yml`, the
-default target above).
+`research-service` is now a full deployment-parity member alongside the
+other four: `docker-compose.deploy.yml` pins it to `${RESEARCH_IMAGE}`
+(`platform: linux/amd64`, same as the others), `deploy/images.env` carries
+its immutable GHCR SHA tag, and the `Deploy Demo` workflow pulls it,
+waits for it to become healthy, and verifies its running image ref
+alongside the other four services.
 
 ## Demo deployment (GHCR images, no local build)
 
@@ -72,8 +74,9 @@ docker compose -f docker-compose.yml -f docker-compose.demo.yml -f docker-compos
 
 It requires `BBB_DATA_ROOT` and `BBB_SECRETS_ROOT` already set in the
 runner's own environment (not GitHub secrets) and never runs `down -v` —
-durable state (MDS data, Runtime journal/state, ABI var) survives
-recreate. The workflow does not send bars, place/cancel Bybit orders, or
-change strategy specs; ABI stays in Demo mode (`BYBIT_ENV=demo`,
+durable state (MDS data, Runtime journal/state, ABI var, Research
+runs/configs) survives recreate. The workflow does not send bars,
+place/cancel Bybit orders, or change strategy specs; ABI stays in Demo
+mode (`BYBIT_ENV=demo`,
 dry-run disabled only via the existing `docker-compose.demo.yml`
 override, same as manual Demo runs today).

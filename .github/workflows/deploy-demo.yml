@@ -37,6 +37,7 @@ jobs:
           docker pull --platform linux/amd64 "$STRATEGY_ENGINE_IMAGE"
           docker pull --platform linux/amd64 "$STRATEGY_RUNTIME_IMAGE"
           docker pull --platform linux/amd64 "$ABI_IMAGE"
+          docker pull --platform linux/amd64 "$RESEARCH_IMAGE"
 
       - name: Validate compose configuration
         run: |
@@ -49,7 +50,7 @@ jobs:
       - name: Wait for health/readiness
         run: |
           set -euo pipefail
-          services="abi strategy-engine strategy-runtime market-data-service"
+          services="abi strategy-engine strategy-runtime market-data-service research-service"
           for i in $(seq 1 30); do
             all_ok=true
             for s in $services; do
@@ -93,6 +94,7 @@ jobs:
           check strategy-engine "$STRATEGY_ENGINE_IMAGE"
           check strategy-runtime "$STRATEGY_RUNTIME_IMAGE"
           check market-data-service "$MDS_IMAGE"
+          check research-service "$RESEARCH_IMAGE"
 
       - name: Verify ABI stays in Demo mode
         run: |
@@ -114,6 +116,7 @@ jobs:
           echo "- Strategy Engine: $STRATEGY_ENGINE_IMAGE" >> "$GITHUB_STEP_SUMMARY"
           echo "- Strategy Runtime: $STRATEGY_RUNTIME_IMAGE" >> "$GITHUB_STEP_SUMMARY"
           echo "- ABI: $ABI_IMAGE" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Research Service: $RESEARCH_IMAGE" >> "$GITHUB_STEP_SUMMARY"
           echo "- BBB_DATA_ROOT: (unset in log by design)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Clean up local docker credentials
