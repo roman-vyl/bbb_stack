@@ -31,13 +31,13 @@ jobs:
           auth=$(printf '%s:%s' "${{ github.actor }}" "${{ secrets.GITHUB_TOKEN }}" | base64)
           printf '{"auths":{"ghcr.io":{"auth":"%s"}}}' "$auth" > "$DOCKER_CONFIG/config.json"
 
-      - name: Pull images (linux/amd64)
+      - name: Pull images
         run: |
-          docker pull --platform linux/amd64 "$MDS_IMAGE"
-          docker pull --platform linux/amd64 "$STRATEGY_ENGINE_IMAGE"
-          docker pull --platform linux/amd64 "$STRATEGY_RUNTIME_IMAGE"
-          docker pull --platform linux/amd64 "$ABI_IMAGE"
-          docker pull --platform linux/amd64 "$RESEARCH_IMAGE"
+          docker pull "$MDS_IMAGE"
+          docker pull "$STRATEGY_ENGINE_IMAGE"
+          docker pull "$STRATEGY_RUNTIME_IMAGE"
+          docker pull "$ABI_IMAGE"
+          docker pull "$RESEARCH_IMAGE"
 
       - name: Validate compose configuration
         run: |
