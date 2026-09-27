@@ -39,6 +39,23 @@ services:
       context: ${STRATEGY_ENGINE_REPO_PATH:-../strategy_engine}
     image: bbb-stack/strategy-engine:local
     read_only: true
+    # Disable Transparent Huge Pages for this process only, then exec the
+    # image's own ENTRYPOINT ("strategy-engine") unchanged. khugepaged
+    # collapsing the glibc [heap] into THP was proven to cause a ~28% CPU
+    # slowdown per call; PR_SET_THP_DISABLE is inherited across execve.
+    # Fails closed (exit 97) if the flag did not take effect.
+    entrypoint:
+      - python3
+      - -c
+      - |
+        import ctypes, os
+        libc = ctypes.CDLL(None)
+        PR_SET_THP_DISABLE = 41
+        PR_GET_THP_DISABLE = 42
+        libc.prctl(PR_SET_THP_DISABLE, 1, 0, 0, 0)
+        if libc.prctl(PR_GET_THP_DISABLE, 0, 0, 0, 0) != 1:
+            raise SystemExit(97)
+        os.execvp("strategy-engine", ["strategy-engine"])
     ports:
       - "127.0.0.1:8090:8090"
     environment:
