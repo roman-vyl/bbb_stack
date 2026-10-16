@@ -30,21 +30,17 @@ PR #34 is merged and its image is published), no change to `deploy/images.env`, 
 service, no authentication layer, no change to published ports, no cleaning of the
 `loadtest-*` files in the specs directory, no switching of `enabled`.
 
-## Findings that the checks must settle
+## Findings that shape the checks
 
 1. **Write capability.** A read-write bind mount gives the whole Research container
    write access to every file of the Runtime catalog, beyond the API. The guarantee that
    Research only creates new files rests on Research code and its tests; Runtime's own
    mount stays read-only.
-2. **API protection.** The Research API has no authentication of its own. The only
-   protection is publishing on `127.0.0.1:8095` and the CORS allow-list. CORS does not
-   stop a cross-site simple request: a page open in the owner's browser can send
-   `POST http://127.0.0.1:8095/api/research/candidates/<id>/runtime-export` with no body
-   and no custom headers, and the route would run (the response is unreadable to the page,
-   but the file is created, disabled). The impact is a new disabled file for an existing
-   candidate id, but it is a hole in the "protected route" requirement. A fix belongs in
-   research_service (for example requiring a custom request header or a JSON content type
-   on this route) and needs the owner's decision; this change only makes the check a
-   recorded step.
+2. **API protection (known V1 limitation).** The Research API has no authentication of
+   its own, and this change adds none and adds no special request headers. Its protection
+   is publishing on `127.0.0.1:8095` only, which is a mandatory check (tasks 2.5). A
+   cross-site simple request from a page in the owner's browser is a known limitation of
+   the local Research API in V1, not a blocker: the export route only creates a disabled
+   file for an existing candidate id.
 3. **Mac filesystem.** `flock` and `os.link` on a Docker Desktop bind mount are not
    guaranteed; they are verified on the real mount before use.

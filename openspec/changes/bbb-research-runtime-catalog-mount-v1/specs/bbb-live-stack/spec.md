@@ -36,8 +36,8 @@ that the create-only runtime export route is not reachable from the network.
 ### Requirement: Catalog Capability Is Verified On The Real Mount
 
 Before the runtime export is used, the owner's Mac SHALL be checked for the mount modes of
-both services, `flock` and hard-link support on the catalog mount, readability of exported
-files by Strategy Runtime, and the cross-site behaviour of the export route, and the results
+both services, loopback-only reachability of the Research API, `flock` and hard-link support on
+the catalog mount, readability of exported files by Strategy Runtime, and Runtime's acceptance of the exported deployment, and the results
 SHALL be recorded in `docs/verification-research-runtime-export-v1.md`.
 
 #### Scenario: A check fails

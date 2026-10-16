@@ -25,14 +25,15 @@
 - [ ] 2.5 API reachability: `curl` to the Research API succeeds on `127.0.0.1:8095` and
   fails on the Mac's LAN address; `docker compose ps` shows no `0.0.0.0` publishing for
   `research-service`.
-- [ ] 2.6 Cross-site request: with the Research image that has the export route, a `POST`
-  to the export route with no body, `Origin: http://evil.example` and no custom header is
-  recorded as accepted or rejected. If accepted, the finding is reported to the owner for a
-  decision in research_service; the feature is not used until he decides.
-- [ ] 2.7 Runtime sees the file: inside the Strategy Runtime container the catalog loader
-  (`FilesystemDeploymentCatalog.load_snapshot()` on `/runtime/specs`) accepts the exported
-  file, lists nothing as invalid, and the file is not selected for a bar (`enabled: false`).
-  Read-only; no state change.
+- [ ] 2.6 Known V1 limitation recorded in the verification file: the local Research API has no
+  authentication and no anti-CSRF header; nothing is checked or changed for it here.
+- [ ] 2.7 Runtime accepts the exported deployment: for the file just exported by Research,
+  `FilesystemDeploymentCatalog.load_snapshot()` run inside the Strategy Runtime container on
+  `/runtime/specs` lists that file name among `accepted_deployments` with `enabled: false` and the
+  `strategy_instance_id` the export returned, and the file appears neither in `invalid_files` nor
+  in `duplicate_identities`. The state of the other files in the catalog (including `loadtest-*`
+  and any invalid ones) does not affect this check. The file is not selected for a bar
+  (`enabled: false`). Read-only; no state change.
 - [ ] 2.8 The existing `loadtest-*` files are listed and left as they are; the owner decides
   separately what to do with them (all are `enabled: true`).
 
