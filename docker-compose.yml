@@ -151,7 +151,13 @@ services:
       RESEARCH_PORT: "8080"
       RESEARCH_STRATEGY_ENGINE_URL: "http://strategy-engine:8090"
       RESEARCH_MARKET_DATA_URL: "http://market-data-service:8080"
+      RESEARCH_RUNTIME_SPECS_PATH: "/runtime-specs"
     volumes:
       - type: bind
         source: ${BBB_DATA_ROOT:?BBB_DATA_ROOT must be set}/research
         target: /data
+      # Strategy Runtime deployment catalog: Research only creates new disabled files here
+      # (research-candidate-runtime-export-v1). Runtime mounts the same directory read-only.
+      - type: bind
+        source: ${BBB_DATA_ROOT:?BBB_DATA_ROOT must be set}/strategy-runtime/specs
+        target: /runtime-specs

@@ -60,6 +60,18 @@ its immutable GHCR SHA tag, and the `Deploy Demo` workflow pulls it,
 waits for it to become healthy, and verifies its running image ref
 alongside the other four services.
 
+## Research export to the Runtime catalog
+
+`research-service` mounts `${BBB_DATA_ROOT}/strategy-runtime/specs` read-write at
+`/runtime-specs` and receives `RESEARCH_RUNTIME_SPECS_PATH=/runtime-specs`. Research only
+creates new deployment files there, always with `enabled: false`
+(`research-candidate-runtime-export-v1`); Strategy Runtime mounts the same directory
+read-only at `/runtime/specs`. The Research API has no authentication of its own and is
+published on `127.0.0.1:8095` only. Mac checks are recorded in
+[`docs/verification-research-runtime-export-v1.md`](docs/verification-research-runtime-export-v1.md).
+The export route needs a Research image that contains it (pin bump in `deploy/images.env`
+is a separate change).
+
 ## Demo deployment (GHCR images, no local build)
 
 The `Deploy Demo` GitHub Actions workflow (manual `workflow_dispatch`,
