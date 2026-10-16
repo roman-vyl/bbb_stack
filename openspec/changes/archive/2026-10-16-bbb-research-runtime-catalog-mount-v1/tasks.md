@@ -12,32 +12,32 @@
 
 ## 2. Verification on the Mac (owner's device, recorded in `docs/verification-research-runtime-export-v1.md`)
 
-- [ ] 2.1 Mounts: `docker inspect` of `research-service` shows `/runtime-specs` with
+- [x] 2.1 Mounts: `docker inspect` of `research-service` shows `/runtime-specs` with
   `RW: true` and `/data` unchanged; `docker inspect` of `strategy-runtime` shows
   `/runtime/specs` with `RW: false`; a write inside Runtime's `/runtime/specs` fails.
-- [ ] 2.2 `flock`: inside the Research container, two processes take `fcntl.flock` on the
+- [x] 2.2 (Failed on the Mac: Docker Desktop's `fakeowner` mount does not enforce `flock`; by the owner's decision Research export dropped `flock`, research_service #35, and the spec no longer requires it.) `flock`: inside the Research container, two processes take `fcntl.flock` on the
   same file in `/data/analysis`; the second fails with `LOCK_NB` while the first holds it.
-- [ ] 2.3 Hard links: inside the Research container, `os.link` of a temporary file to a new
+- [x] 2.3 Hard links: inside the Research container, `os.link` of a temporary file to a new
   name in `/runtime-specs` succeeds, the temporary file can be unlinked, and a second link
   to an existing name fails with `FileExistsError`; the test files are removed.
-- [ ] 2.4 Permissions: a file created in `/runtime-specs` by Research is readable by the
+- [x] 2.4 Permissions: a file created in `/runtime-specs` by Research is readable by the
   Strategy Runtime container user.
-- [ ] 2.5 API reachability: `curl` to the Research API succeeds on `127.0.0.1:8095` and
+- [x] 2.5 API reachability: `curl` to the Research API succeeds on `127.0.0.1:8095` and
   fails on the Mac's LAN address; `docker compose ps` shows no `0.0.0.0` publishing for
   `research-service`.
-- [ ] 2.6 Known V1 limitation recorded in the verification file: the local Research API has no
+- [x] 2.6 Known V1 limitation recorded in the verification file: the local Research API has no
   authentication and no anti-CSRF header; nothing is checked or changed for it here.
-- [ ] 2.7 Runtime accepts the exported deployment: for the file just exported by Research,
+- [x] 2.7 Runtime accepts the exported deployment: for the file just exported by Research,
   `FilesystemDeploymentCatalog.load_snapshot()` run inside the Strategy Runtime container on
   `/runtime/specs` lists that file name among `accepted_deployments` with `enabled: false` and the
   `strategy_instance_id` the export returned, and the file appears neither in `invalid_files` nor
   in `duplicate_identities`. The state of the other files in the catalog (including `loadtest-*`
   and any invalid ones) does not affect this check. The file is not selected for a bar
   (`enabled: false`). Read-only; no state change.
-- [ ] 2.8 The existing `loadtest-*` files are listed and left as they are; the owner decides
+- [x] 2.8 The existing `loadtest-*` files are listed and left as they are; the owner decides
   separately what to do with them (all are `enabled: true`).
 
 ## 3. Out of this change
 
-- [ ] 3.1 Pin bump of `RESEARCH_IMAGE` in `deploy/images.env` (separate PR after research_service
+- [x] 3.1 (Done in #39, then #40.) Pin bump of `RESEARCH_IMAGE` in `deploy/images.env` (separate PR after research_service
   PR #34 is merged and its image is published).
