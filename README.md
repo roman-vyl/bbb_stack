@@ -31,7 +31,7 @@ For a Bybit Demo execution smoke, keep data and secrets outside the repository:
 ```sh
 export BBB_DATA_ROOT=/Users/mcroma/BBB_data
 export BBB_SECRETS_ROOT=/Users/mcroma/BBB_secrets
-mkdir -p "$BBB_DATA_ROOT"/{abi,market-data,strategy-runtime/journal,strategy-runtime/specs,research/runs,research/configs}
+mkdir -p "$BBB_DATA_ROOT"/{abi,market-data,strategy-runtime/journal,strategy-runtime/specs,research/runs,research/configs,journal}
 mkdir -p "$BBB_SECRETS_ROOT"/abi
 $EDITOR "$BBB_SECRETS_ROOT"/abi/bybit-demo.env
 docker compose -f docker-compose.yml -f docker-compose.demo.yml up --build
@@ -52,6 +52,7 @@ The service build contexts default to sibling repositories:
 - `STRATEGY_RUNTIME_REPO_PATH=../strategy_runtime`
 - `ABI_REPO_PATH=../abi_executor_bot`
 - `RESEARCH_REPO_PATH=../research_service`
+- `JOURNAL_SERVICE_REPO_PATH=../journal_service`
 
 `research-service` is now a full deployment-parity member alongside the
 other four: `docker-compose.deploy.yml` pins it to `${RESEARCH_IMAGE}`
@@ -71,6 +72,19 @@ published on `127.0.0.1:8095` only. Mac checks are recorded in
 [`docs/verification-research-runtime-export-v1.md`](docs/verification-research-runtime-export-v1.md).
 The export route needs a Research image that contains it (pin bump in `deploy/images.env`
 is a separate change).
+
+## Central Journal
+
+`journal-service` (repository `journal_service`) is a read-only observer. It mounts
+`${BBB_DATA_ROOT}/strategy-runtime/journal` read-only at `/sources/runtime`, reads
+`runtime.jsonl` from there, and keeps its own SQLite database in
+`${BBB_DATA_ROOT}/journal` (mounted read-write at `/data`, file `journal.sqlite3`). No
+other service mounts that database directory. Its health endpoint is published on
+`127.0.0.1:8097` only. No trading service depends on it (`depends_on`) and it depends on
+none, so stopping it never affects Runtime, ABI, Engine, MDS or Research. Mac checks are
+recorded in [`docs/verification-journal-service-v1.md`](docs/verification-journal-service-v1.md).
+The deploy override requires `JOURNAL_IMAGE`; its pin in `deploy/images.env` is a separate
+change after the journal_service image is published.
 
 ## Demo deployment (GHCR images, no local build)
 
