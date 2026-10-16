@@ -1,14 +1,14 @@
 ## 1. Compose (apply)
 
-- [ ] 1.1 `docker-compose.yml`: `research-service` gets the read-write bind mount
+- [x] 1.1 `docker-compose.yml`: `research-service` gets the read-write bind mount
   `${BBB_DATA_ROOT:?BBB_DATA_ROOT must be set}/strategy-runtime/specs` → `/runtime-specs`
   and `RESEARCH_RUNTIME_SPECS_PATH: "/runtime-specs"`.
-- [ ] 1.2 `strategy-runtime` mount unchanged and still `read_only: true`.
-- [ ] 1.3 `docker compose -f docker-compose.yml config --quiet` and the same with
+- [x] 1.2 `strategy-runtime` mount unchanged and still `read_only: true`.
+- [x] 1.3 `docker compose -f docker-compose.yml config --quiet` and the same with
   `-f docker-compose.demo.yml -f docker-compose.deploy.yml --env-file deploy/images.env`
   succeed; the rendered config shows the new mount only on `research-service`, with no
   `read_only` on it, and `/runtime/specs` still `read_only: true` on `strategy-runtime`.
-- [ ] 1.4 README: one paragraph on the mount and the variable.
+- [x] 1.4 README: one paragraph on the mount and the variable.
 
 ## 2. Verification on the Mac (owner's device, recorded in `docs/verification-research-runtime-export-v1.md`)
 
