@@ -161,3 +161,31 @@ services:
       - type: bind
         source: ${BBB_DATA_ROOT:?BBB_DATA_ROOT must be set}/strategy-runtime/specs
         target: /runtime-specs
+
+  # Central Journal (journal_service): read-only observer of the Runtime processing journal.
+  # No trading service depends on it and it depends on none: Runtime and ABI are unaffected
+  # when it is stopped, and it catches up from runtime.jsonl when it starts.
+  journal-service:
+    build:
+      context: ${JOURNAL_SERVICE_REPO_PATH:-../journal_service}
+    image: bbb-stack/journal-service:local
+    restart: unless-stopped
+    read_only: true
+    ports:
+      - "127.0.0.1:8097:8097"
+    environment:
+      JOURNAL_HOST: "0.0.0.0"
+      JOURNAL_PORT: "8097"
+      JOURNAL_RUNTIME_SOURCE_PATH: "/sources/runtime/runtime.jsonl"
+      JOURNAL_DB_PATH: "/data/journal.sqlite3"
+    volumes:
+      # Source: Runtime's journal directory, read-only. The directory (not the file) is
+      # mounted so that a replaced runtime.jsonl is seen.
+      - type: bind
+        source: ${BBB_DATA_ROOT:?BBB_DATA_ROOT must be set}/strategy-runtime/journal
+        target: /sources/runtime
+        read_only: true
+      # Database: owned by the Central Journal alone.
+      - type: bind
+        source: ${BBB_DATA_ROOT:?BBB_DATA_ROOT must be set}/journal
+        target: /data

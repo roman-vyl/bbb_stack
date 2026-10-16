@@ -20,3 +20,6 @@ services:
 
   research-service:
     image: ${RESEARCH_IMAGE:?RESEARCH_IMAGE must be set (see deploy/images.env)}
+
+  journal-service:
+    image: ${JOURNAL_IMAGE:?JOURNAL_IMAGE must be set (see deploy/images.env)}
