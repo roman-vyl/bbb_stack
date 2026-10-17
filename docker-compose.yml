@@ -117,7 +117,8 @@ services:
       - "127.0.0.1:8080:8080"
     environment:
       MDS_DATABASE_PATH: "/data/market.sqlite3"
-      MDS_MARKETS_CONFIG_PATH: "/app/config/markets.toml"
+      MDS_MARKETS_CONFIG_PATH: "/app/config-host/markets.toml"
+      MDS_CONFIG_WATCH_SECONDS: "10"
       MDS_HTTP_HOST: "0.0.0.0"
       MDS_HTTP_PORT: "8080"
       MDS_RUNTIME_WEBHOOK_ENABLED: "true"
@@ -126,9 +127,11 @@ services:
       MDS_STARTUP_REPAIR_WINDOWS_PER_STREAM: "2"
       MDS_REALTIME_RECOVERY_WINDOWS_PER_STREAM: "2"
     volumes:
+      # Operator-owned market config, edited by hand and picked up without a
+      # deploy (market_data_service mds-external-config-v1).
       - type: bind
-        source: ${MDS_REPO_PATH:-../market_data_service}/config/markets.toml
-        target: /app/config/markets.toml
+        source: ${BBB_DATA_ROOT:?BBB_DATA_ROOT must be set}/mds
+        target: /app/config-host
         read_only: true
       - type: bind
         source: ${BBB_DATA_ROOT:?BBB_DATA_ROOT must be set}/market-data

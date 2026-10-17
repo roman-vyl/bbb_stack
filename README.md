@@ -45,6 +45,12 @@ BYBIT_API_KEY=...
 BYBIT_API_SECRET=...
 ```
 
+The MDS instrument list is host-owned: `${BBB_DATA_ROOT}/mds/markets.toml`
+(see the README next to it). It is mounted read-only at `/app/config-host` in
+base and deploy mode. Edit it by hand; MDS checks it every 10 s
+(`MDS_CONFIG_WATCH_SECONDS`) and restarts itself on a valid change of the
+enabled instruments. No image or pin change is needed.
+
 The service build contexts default to sibling repositories:
 
 - `MDS_REPO_PATH=../market_data_service`

@@ -66,8 +66,9 @@ The live stack composition SHALL mount only the required system data paths from
 
 - **WHEN** the stack runs with `BBB_DATA_ROOT`
 - **THEN** `${BBB_DATA_ROOT}/market-data` SHALL mount to MDS `/data` writable
-- **AND** `${MDS_REPO_PATH}/config/markets.toml` SHALL mount to MDS
-  `/app/config/markets.toml` read-only
+- **AND** `${BBB_DATA_ROOT}/mds` SHALL mount to MDS `/app/config-host` read-only,
+  with `MDS_MARKETS_CONFIG_PATH=/app/config-host/markets.toml` and
+  `MDS_CONFIG_WATCH_SECONDS=10`, in base and deploy mode
 - **AND** `${BBB_DATA_ROOT}/strategy-runtime/specs` SHALL mount to Runtime
   `/runtime/specs` read-only
 - **AND** `${BBB_DATA_ROOT}/strategy-runtime/journal` SHALL mount to Runtime
