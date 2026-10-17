@@ -31,7 +31,7 @@ For a Bybit Demo execution smoke, keep data and secrets outside the repository:
 ```sh
 export BBB_DATA_ROOT=/Users/mcroma/BBB_data
 export BBB_SECRETS_ROOT=/Users/mcroma/BBB_secrets
-mkdir -p "$BBB_DATA_ROOT"/{abi,market-data,strategy-runtime/journal,strategy-runtime/specs,research/runs,research/configs,journal}
+mkdir -p "$BBB_DATA_ROOT"/{abi,market-data,mds,strategy-runtime/journal,strategy-runtime/specs,research/runs,research/configs,journal}
 mkdir -p "$BBB_SECRETS_ROOT"/abi
 $EDITOR "$BBB_SECRETS_ROOT"/abi/bybit-demo.env
 docker compose -f docker-compose.yml -f docker-compose.demo.yml up --build
@@ -60,6 +60,17 @@ other four: `docker-compose.deploy.yml` pins it to `${RESEARCH_IMAGE}`
 its immutable GHCR SHA tag, and the `Deploy Demo` workflow pulls it,
 waits for it to become healthy, and verifies its running image ref
 alongside the other four services.
+
+## Market data instrument list
+
+`market-data-service` reads its instrument list from `${BBB_DATA_ROOT}/mds/markets.toml`
+(the directory is mounted read-only at `/app/config`, in source-build and in deploy mode).
+Create the file before the first start, for example from `config/markets.toml` of
+market_data_service. To enable or disable an instrument change its `enabled` value and
+restart only that container (`docker compose restart market-data-service`); no image,
+pin or PR is needed. MDS reads the file at start, so a missing or invalid file stops it
+with the loader's error instead of falling back to a baked-in list. Stored history of a
+disabled instrument is kept.
 
 ## Research export to the Runtime catalog
 

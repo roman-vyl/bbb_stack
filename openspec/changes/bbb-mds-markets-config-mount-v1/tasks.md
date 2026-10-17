@@ -1,15 +1,15 @@
 ## 1. Compose and docs (apply)
 
-- [ ] 1.1 `docker-compose.yml`: `market-data-service` replaces the
+- [x] 1.1 `docker-compose.yml`: `market-data-service` replaces the
   `${MDS_REPO_PATH}/config/markets.toml` bind mount with
   `${BBB_DATA_ROOT:?BBB_DATA_ROOT must be set}/mds` → `/app/config`, `read_only: true`.
-- [ ] 1.2 `docker-compose.deploy.yml`: the `volumes: !override` list for
+- [x] 1.2 `docker-compose.deploy.yml`: the `volumes: !override` list for
   `market-data-service` contains the same config mount next to `/data`; the comment about
   the baked config is replaced.
 - [ ] 1.3 `docker compose config --quiet` succeeds for the base file and for
   `-f docker-compose.demo.yml -f docker-compose.deploy.yml --env-file deploy/images.env`;
   the rendered config shows the new mount only on `market-data-service`.
-- [ ] 1.4 README: add `mds` to the `mkdir` line, a short section on the file and on
+- [x] 1.4 README: add `mds` to the `mkdir` line, a short section on the file and on
   restarting only `market-data-service`.
 
 ## 2. On the Mac (owner's device; no restart while the smoke test runs)
