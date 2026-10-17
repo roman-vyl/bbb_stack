@@ -127,8 +127,8 @@ services:
       MDS_REALTIME_RECOVERY_WINDOWS_PER_STREAM: "2"
     volumes:
       - type: bind
-        source: ${MDS_REPO_PATH:-../market_data_service}/config/markets.toml
-        target: /app/config/markets.toml
+        source: ${BBB_DATA_ROOT:?BBB_DATA_ROOT must be set}/mds
+        target: /app/config
         read_only: true
       - type: bind
         source: ${BBB_DATA_ROOT:?BBB_DATA_ROOT must be set}/market-data
