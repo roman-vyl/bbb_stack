@@ -24,10 +24,13 @@
   Live container mounts `/Users/mcroma/BBB_data/mds` -> `/app/config` read-only; `/health` is
   `healthy`; MDS logs `service readiness ready=True ready_streams=40 total_streams=40`
   (10 instruments x 5m/1h/4h/1d, BTC and ETH included) on 2026-10-21.
-- [ ] 2.3 Edit-to-effect: change one `enabled`, restart only `market-data-service`, the
+- [x] 2.3 Edit-to-effect: change one `enabled`, restart only `market-data-service`, the
   stream list in `/health` follows the file, without any image or pin change.
+  Confirmed by the owner: editing `enabled` and restarting MDS changes the stream list;
+  checked many times on the Mac.
 - [ ] 2.4 Bad file: with an invalid file MDS fails at startup with a readable error; the
   file is restored and MDS starts. Recorded in the verification note.
+  Waived by the owner on 2026-10-21: not needed.
 
 ## 3. Out of this change
 
