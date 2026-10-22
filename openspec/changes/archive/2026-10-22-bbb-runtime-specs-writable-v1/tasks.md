@@ -6,4 +6,4 @@
 
 ## 2. Rollout (on the owner's word only)
 
-- [ ] 2.1 PR and merge; the image pin for Runtime and the deploy are separate steps.
+- [x] 2.1 PR and merge; the image pin for Runtime and the deploy are separate steps.
