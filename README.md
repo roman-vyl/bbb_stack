@@ -78,7 +78,8 @@ disabled instrument is kept.
 `/runtime-specs` and receives `RESEARCH_RUNTIME_SPECS_PATH=/runtime-specs`. Research only
 creates new deployment files there, always with `enabled: false`
 (`research-candidate-runtime-export-v1`); Strategy Runtime mounts the same directory
-read-only at `/runtime/specs`. The Research API has no authentication of its own and is
+writable at `/runtime/specs` and uses it only to change `enabled` of an existing file
+(`runtime-strategy-enabled-control-v1`). The Research API has no authentication of its own and is
 published on `127.0.0.1:8095` only. Mac checks are recorded in
 [`docs/verification-research-runtime-export-v1.md`](docs/verification-research-runtime-export-v1.md).
 The export route needs a Research image that contains it (pin bump in `deploy/images.env`
