@@ -11,6 +11,7 @@ services:
       ABI_DRY_RUN: "true"
       ABI_LIVE_TRADING_ENABLED: "false"
       ABI_ENTRY_PACKAGE_CORRELATION_PATH: "/app/var/abi_entry_package_correlation.jsonl"
+      ABI_DIAGNOSTICS_PATH: "/app/var/abi_diagnostics.jsonl"
       BYBIT_ENV: "testnet"
       BYBIT_ACCOUNT_TYPE: "UNIFIED"
       BYBIT_RECV_WINDOW: "5000"
