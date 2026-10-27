@@ -66,6 +66,14 @@ services:
       # A cold full-history read from market-data-service (episode history route)
       # can take longer than the 30 s default.
       STRATEGY_ENGINE_MDS_READ_TIMEOUT_SECONDS: "300"
+      # Engine-wide settings (live_entry_mode), read once at start. A missing
+      # engine.toml means defaults; edit the file and restart the container.
+      STRATEGY_ENGINE_CONFIG_PATH: "/app/config/engine.toml"
+    volumes:
+      - type: bind
+        source: ${BBB_DATA_ROOT:?BBB_DATA_ROOT must be set}/strategy-engine
+        target: /app/config
+        read_only: true
 
   strategy-runtime:
     build:
