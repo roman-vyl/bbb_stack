@@ -72,6 +72,23 @@ pin or PR is needed. MDS reads the file at start, so a missing or invalid file s
 with the loader's error instead of falling back to a baked-in list. Stored history of a
 disabled instrument is kept.
 
+## Strategy Engine settings
+
+`strategy-engine` mounts `${BBB_DATA_ROOT}/strategy-engine` read-only at `/app/config` and
+receives `STRATEGY_ENGINE_CONFIG_PATH=/app/config/engine.toml` (source-build and deploy mode).
+The directory must exist before the first start; the file itself is optional. Without the
+file, or without a key, the Engine uses its defaults (`live_entry_mode = "ema_anchor"`).
+The Engine reads the file once at start: to switch, edit it and restart only that container
+(`docker compose restart strategy-engine`); no image, pin or PR is needed. An unknown key or
+value, or a file that does not parse, stops the Engine with an error. Example:
+
+```toml
+live_entry_mode = "ema_anchor"   # or "touch_trigger"
+```
+
+Do not set `touch_trigger` on a live stack before ABI places the touch-close entry as a
+limit order: today ABI sends a conditional Market entry that would fill at once as taker.
+
 ## Research export to the Runtime catalog
 
 `research-service` mounts `${BBB_DATA_ROOT}/strategy-runtime/specs` read-write at
