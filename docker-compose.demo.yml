@@ -7,3 +7,7 @@ services:
       ABI_LIVE_TRADING_ENABLED: "true"
       BYBIT_ENV: "demo"
       ABI_POSITION_SIZING_MODE: "risk"
+      # Exchange facts journal: private WS stream recorder + order linker,
+      # SQLite at /app/var/abi_exchange_facts_demo.sqlite3 (BBB_data/abi).
+      # Never stops trading; "false" turns it off.
+      ABI_EXCHANGE_FACTS_ENABLED: "true"
