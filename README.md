@@ -89,6 +89,15 @@ live_entry_mode = "ema_anchor"   # or "touch_trigger"
 Do not set `touch_trigger` on a live stack before ABI places the touch-close entry as a
 limit order: today ABI sends a conditional Market entry that would fill at once as taker.
 
+## Strategy Runtime settings
+
+`strategy-runtime` mounts `${BBB_DATA_ROOT}/strategy-runtime/config` read-only at `/runtime/config` and
+receives `RUNTIME_CONFIG_PATH=/runtime/config/runtime.toml`, the same way as the Engine settings above.
+The directory must exist before the first start; the file is optional (missing = `live_entry_mode =
+"ema_anchor"`). Runtime reads it once at start: edit it and restart only that container
+(`docker compose restart strategy-runtime`). An unknown key or value, or a broken file, stops Runtime.
+No Runtime behaviour depends on the mode yet.
+
 ## Research export to the Runtime catalog
 
 `research-service` mounts `${BBB_DATA_ROOT}/strategy-runtime/specs` read-write at
