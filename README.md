@@ -98,6 +98,20 @@ The directory must exist before the first start; the file is optional (missing =
 (`docker compose restart strategy-runtime`). An unknown key or value, or a broken file, stops Runtime.
 No Runtime behaviour depends on the mode yet.
 
+## ABI settings
+
+`abi` mounts `${BBB_DATA_ROOT}/abi/config` read-only at `/app/config` and receives
+`ABI_CONFIG_PATH=/app/config/abi.json`. The directory must exist before the first start; the file is
+optional (missing = `live_entry_mode` `ema_anchor`, the conditional Market entry). ABI reads it once at
+start: edit it and restart only that container. Invalid JSON, an unknown key or value stops ABI.
+
+```json
+{ "live_entry_mode": "touch_trigger", "touch_trigger_entry_order_type": "limit" }
+```
+
+Set `touch_trigger` in ABI only together with the Engine and Runtime settings above, after the joint
+check: in `touch_trigger` ABI sends a plain Market or a GTC Limit entry with no exchange trigger.
+
 ## Research export to the Runtime catalog
 
 `research-service` mounts `${BBB_DATA_ROOT}/strategy-runtime/specs` read-write at
