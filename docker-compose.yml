@@ -100,7 +100,14 @@ services:
       RUNTIME_ABI_ENTRY_PACKAGE_TIMEOUT_SECONDS: "5"
       RUNTIME_ABI_POSITION_MANAGEMENT_TIMEOUT_SECONDS: "5"
       RUNTIME_COMMITTED_BAR_QUEUE_CAPACITY: "256"
+      # Runtime settings (live_entry_mode), read once at start. A missing
+      # runtime.toml means defaults; edit the file and restart the container.
+      RUNTIME_CONFIG_PATH: "/runtime/config/runtime.toml"
     volumes:
+      - type: bind
+        source: ${BBB_DATA_ROOT:?BBB_DATA_ROOT must be set}/strategy-runtime/config
+        target: /runtime/config
+        read_only: true
       - type: bind
         source: ${BBB_DATA_ROOT:?BBB_DATA_ROOT must be set}/strategy-runtime/specs
         target: /runtime/specs
