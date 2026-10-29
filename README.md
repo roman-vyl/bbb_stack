@@ -131,7 +131,9 @@ is a separate change).
 `${BBB_DATA_ROOT}/strategy-runtime/journal` read-only at `/sources/runtime`, reads
 `runtime.jsonl` from there, and keeps its own SQLite database in
 `${BBB_DATA_ROOT}/journal` (mounted read-write at `/data`, file `journal.sqlite3`). No
-other service mounts that database directory. Its health endpoint is published on
+other service mounts that database directory. To assemble closed trades it reads ABI's
+per-cycle exchange journal over HTTP (`JOURNAL_ABI_BASE_URL=http://abi:8787`, GET only);
+when ABI is down the trade rows stay incomplete and are retried. Its health endpoint is published on
 `127.0.0.1:8097` only. No trading service depends on it (`depends_on`) and it depends on
 none, so stopping it never affects Runtime, ABI, Engine, MDS or Research. Mac checks are
 recorded in [`docs/verification-journal-service-v1.md`](docs/verification-journal-service-v1.md).

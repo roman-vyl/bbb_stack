@@ -185,7 +185,8 @@ services:
         source: ${BBB_DATA_ROOT:?BBB_DATA_ROOT must be set}/strategy-runtime/specs
         target: /runtime-specs
 
-  # Central Journal (journal_service): read-only observer of the Runtime processing journal.
+  # Central Journal (journal_service): read-only observer of the Runtime processing journal;
+  # it also reads ABI's per-cycle exchange journal over HTTP to assemble closed trades.
   # No trading service depends on it and it depends on none: Runtime and ABI are unaffected
   # when it is stopped, and it catches up from runtime.jsonl when it starts.
   journal-service:
@@ -201,6 +202,9 @@ services:
       JOURNAL_PORT: "8097"
       JOURNAL_RUNTIME_SOURCE_PATH: "/sources/runtime/runtime.jsonl"
       JOURNAL_DB_PATH: "/data/journal.sqlite3"
+      # ABI read API for assembling closed trades (GET only). Soft link: no depends_on;
+      # while ABI is down the trade rows stay incomplete and are retried.
+      JOURNAL_ABI_BASE_URL: "http://abi:8787"
     volumes:
       # Source: Runtime's journal directory, read-only. The directory (not the file) is
       # mounted so that a replaced runtime.jsonl is seen.
