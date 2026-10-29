@@ -7,6 +7,9 @@ services:
       ABI_LIVE_TRADING_ENABLED: "true"
       BYBIT_ENV: "demo"
       ABI_POSITION_SIZING_MODE: "risk"
+      # Bybit demo account is in hedge mode (both sides per coin); ABI sends
+      # positionIdx 1/2 and checks the coin mode before each entry.
+      ABI_BYBIT_LINEAR_POSITION_BINDING_MODE: "hedge"
       # Exchange facts journal: private WS stream recorder + order linker,
       # SQLite at /app/var/abi_exchange_facts_demo.sqlite3 (BBB_data/abi).
       # Never stops trading; "false" turns it off.
