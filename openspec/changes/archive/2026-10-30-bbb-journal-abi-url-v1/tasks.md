@@ -6,6 +6,6 @@
 
 ## 2. Rollout (on the owner's word only)
 
-- [ ] 2.1 PR and merge.
-- [ ] 2.2 Separate PR: `JOURNAL_IMAGE` pin to the journal_service image with the builder.
-- [ ] 2.3 Deploy on the owner's word, after checking every pin in `deploy/images.env` against what the Mac runs.
+- [x] 2.1 PR and merge.
+- [x] 2.2 Separate PR: `JOURNAL_IMAGE` pin to the journal_service image with the builder.
+- [x] 2.3 Deploy on the owner's word, after checking every pin in `deploy/images.env` against what the Mac runs.
