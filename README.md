@@ -26,24 +26,7 @@ docker compose up --build
 The base composition is safe by default: ABI runs dry-run, live trading is
 disabled, and no exchange credential file is loaded.
 
-For a Bybit Demo execution smoke, keep data and secrets outside the repository:
-
-```sh
-export BBB_DATA_ROOT=/Users/mcroma/BBB_data
-export BBB_SECRETS_ROOT=/Users/mcroma/BBB_secrets
-mkdir -p "$BBB_DATA_ROOT"/{abi,market-data,mds,strategy-runtime/journal,strategy-runtime/specs,research/runs,research/configs,journal}
-mkdir -p "$BBB_SECRETS_ROOT"/abi
-$EDITOR "$BBB_SECRETS_ROOT"/abi/bybit-demo.env
-docker compose -f docker-compose.yml -f docker-compose.demo.yml up --build
-```
-
-The Demo secret file is expected at
-`$BBB_SECRETS_ROOT/abi/bybit-demo.env` and should contain:
-
-```sh
-BYBIT_API_KEY=...
-BYBIT_API_SECRET=...
-```
+For an execution smoke on Bybit Demo, use the protected deployment below.
 
 The service build contexts default to sibling repositories:
 
@@ -57,7 +40,7 @@ The service build contexts default to sibling repositories:
 `research-service` is now a full deployment-parity member alongside the
 other four: `docker-compose.deploy.yml` pins it to `${RESEARCH_IMAGE}`
 (`platform: linux/amd64`, same as the others), `deploy/images.env` carries
-its immutable GHCR SHA tag, and the `Deploy Demo` workflow pulls it,
+its immutable GHCR SHA tag, and the local Demo deploy command pulls it,
 waits for it to become healthy, and verifies its running image ref
 alongside the other four services.
 
@@ -142,21 +125,29 @@ change after the journal_service image is published.
 
 ## Demo deployment (GHCR images, no local build)
 
-The `Deploy Demo` GitHub Actions workflow (manual `workflow_dispatch`,
-self-hosted Mac runner) pulls the exact images pinned in
-[`deploy/images.env`](deploy/images.env) and recreates the stack without
-building from source:
+Run the deploy command from a terminal on the Mac that hosts Docker Desktop.
+Export the existing `BBB_DATA_ROOT`. Install `age` and prepare a private
+`.abi-credentials.age` file with the ABI credential command. Authenticate to
+GHCR locally if the image registry requires it.
 
 ```sh
-docker compose -f docker-compose.yml -f docker-compose.demo.yml -f docker-compose.deploy.yml \
-  --env-file deploy/images.env up -d --no-build --remove-orphans
+node scripts/deploy-demo.mjs /path/to/bybit-demo.abi-credentials.age
 ```
 
-It requires `BBB_DATA_ROOT` and `BBB_SECRETS_ROOT` already set in the
-runner's own environment (not GitHub secrets) and never runs `down -v` —
-durable state (MDS data, Runtime journal/state, ABI var, Research
-runs/configs) survives recreate. The workflow does not send bars,
-place/cancel Bybit orders, or change strategy specs; ABI stays in Demo
-mode (`BYBIT_ENV=demo`,
-dry-run disabled only via the existing `docker-compose.demo.yml`
-override, same as manual Demo runs today).
+The command pulls the immutable images pinned in `deploy/images.env`.
+It reuses a healthy ABI when the image and Compose configuration match.
+For an ABI update or restart, `age` asks for the password before the command
+replaces the container. Runtime starts after ABI passes its health check.
+The Compose project remains `bbb_stack`.
+
+Before the first switch, pin a published ABI image containing the protected
+credential receiver from ABI PR #49. Pause new entries, wait for orders,
+positions and Runtime cycles to clear, and record the prior image and checkout
+for rollback. Back up the existing ABI data once writes are stopped.
+After deployment, verify ABI and Runtime readiness, confirm Bybit Demo mode,
+and run a controlled Demo cycle before resuming signals.
+
+If verification fails, keep new entries paused and reconcile the exchange state.
+Restore the previous stack revision and image using the same data directory.
+After an interrupted local deploy, remove `.demo-deploy.lock` from the data
+root only after confirming the prior deploy has exited.
