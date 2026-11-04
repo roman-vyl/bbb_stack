@@ -40,7 +40,7 @@ The service build contexts default to sibling repositories:
 `research-service` is now a full deployment-parity member alongside the
 other four: `docker-compose.deploy.yml` pins it to `${RESEARCH_IMAGE}`
 (`platform: linux/amd64`, same as the others), `deploy/images.env` carries
-its immutable GHCR SHA tag, and the local Demo deploy command pulls it,
+its immutable GHCR SHA tag, and the Demo deploy script pulls it,
 waits for it to become healthy, and verifies its running image ref
 alongside the other four services.
 
@@ -139,6 +139,12 @@ It reuses a healthy ABI when the image and Compose configuration match.
 For an ABI update or restart, `age` asks for the password before the command
 replaces the container. Runtime starts after ABI passes its health check.
 The Compose project remains `bbb_stack`.
+
+The GitHub Actions **Deploy Demo** workflow runs the same command in
+non-interactive mode. It updates the other services once the running ABI
+is healthy and matches the pulled image ID and Compose configuration.
+If ABI needs a restart or update, the workflow stops before recreating any
+services and directs the operator to the local command.
 
 Before the first switch, pin a published ABI image containing the protected
 credential receiver from ABI PR #49. Pause new entries, wait for orders,

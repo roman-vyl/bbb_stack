@@ -1,0 +1,40 @@
+name: Deploy Demo
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    env:
+      DOCKER_CONFIG: ${{ github.workspace }}/.docker-config
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Login to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p "$DOCKER_CONFIG"
+          ln -sf "$HOME/.docker/cli-plugins" "$DOCKER_CONFIG/cli-plugins"
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+      - name: Deploy services with the running ABI
+        run: node scripts/deploy-demo.mjs --non-interactive
+
+      - name: Verify Runtime readiness
+        run: |
+          curl -fsS http://127.0.0.1:8093/health/live > /dev/null
+          curl -fsS http://127.0.0.1:8093/health/ready > /dev/null
+
+      - name: Clean up local Docker credentials
+        if: always()
+        run: rm -rf "$DOCKER_CONFIG"
