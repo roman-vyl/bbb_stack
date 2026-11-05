@@ -1,6 +1,6 @@
 # Deploy и поздняя авторизация ABI
 
-Этот draft требует согласованного ABI integration image и Runtime с обработкой 503 execution_not_ready (Runtime PR #46). Текущие image pins не изменены: до согласованного выпуска образов и их закрепления эта конфигурация не должна применяться к действующему Demo. PR #103 с интерактивным deploy больше не нужен; workflow Deploy Demo сохраняется.
+Совместимые ABI и Runtime закреплены точными SHA в deploy/images.env. ABI включает #55, Runtime — #47 вместе с #46. Эти версии применяются совместно с данной Compose-конфигурацией; заменять только один компонент на прежнюю версию нельзя. Сам Deploy на действующий Demo и реальный Bybit smoke требуют отдельного разрешения. Точный состав выпуска и точки проверки — в [release review](releases/abi-runtime-authorization-v1.md). Обычный workflow Deploy Demo сохранён.
 
 В окружении runner задайте ABI_EXPECTED_BYBIT_UID — доверенный UID именно Demo-аккаунта (не родительского mainnet). Это несекретная настройка, не значение из передаваемого кандидата. Уберите API credentials из ABI env_file; Compose больше его не подключает. Торговые настройки, risk sizing, hedge и существующие данные остаются.
 
