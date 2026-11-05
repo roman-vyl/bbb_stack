@@ -12,6 +12,7 @@ def main():
     parser.add_argument("operation", choices=["authorize", "retry", "status"])
     parser.add_argument("encrypted", nargs="?")
     parser.add_argument("--abi-repo", default=os.environ.get("ABI_REPO_PATH", "../abi_executor_bot"))
+    parser.add_argument("--project", default=os.environ.get("COMPOSE_PROJECT_NAME", "bbb_stack"))
     args = parser.parse_args()
     if (args.operation == "authorize") != (args.encrypted is not None):
         parser.error("authorize requires an age file; retry/status do not accept one")
@@ -20,8 +21,10 @@ def main():
     if not client.is_file():
         parser.error("ABI checkout with the reviewed authorization client is required")
     try:
-        result = subprocess.run(["docker", "compose", "-f", "docker-compose.yml", "-f", "docker-compose.demo.yml",
-                                 "-f", "docker-compose.deploy.yml", "--env-file", "deploy/images.env", "ps", "-q", "abi"],
+        # Discovery must not depend on deployment env files, image pins or runner variables.
+        result = subprocess.run(["docker", "ps", "--no-trunc", "--filter",
+                                 f"label=com.docker.compose.project={args.project}", "--filter",
+                                 "label=com.docker.compose.service=abi", "--format", "{{.ID}}"],
                                 cwd=root, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=True, timeout=15)
         containers = result.stdout.decode("ascii").split()
         if len(containers) != 1 or not all(ch in "0123456789abcdef" for ch in containers[0]):

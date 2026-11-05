@@ -47,7 +47,10 @@ class IntegrationConfigurationTests(unittest.TestCase):
              patch.object(client.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, (container + "\n").encode())) as discover, \
              patch.object(client.subprocess, "call", return_value=0) as relay:
             self.assertEqual(client.main(), 0)
-            self.assertEqual(discover.call_args.args[0][-3:], ["ps", "-q", "abi"])
+            self.assertEqual(discover.call_args.args[0][:3], ["docker", "ps", "--no-trunc"])
+            self.assertIn("label=com.docker.compose.project=bbb_stack", discover.call_args.args[0])
+            self.assertIn("label=com.docker.compose.service=abi", discover.call_args.args[0])
+            self.assertNotIn("compose", discover.call_args.args[0])
             self.assertEqual(relay.call_args.args[0][-2:], [container, "status"])
 
     def test_operator_command_refuses_ambiguous_containers(self):
