@@ -1,8 +1,14 @@
 services:
   abi:
-    env_file:
-      - ${BBB_SECRETS_ROOT:?BBB_SECRETS_ROOT must be set}/abi/bybit-demo.env
+    # Existing service/data/network; deploy starts LOCKED without credentials.
+    mem_limit: ${ABI_MEMORY_LIMIT:-1g}
+    memswap_limit: ${ABI_MEMORY_LIMIT:-1g}
+    ulimits:
+      core: 0
+    tmpfs:
+      - /run/abi-authorization:rw,noexec,nosuid,size=64k,mode=0700,uid=1000,gid=1000
     environment:
+      ABI_EXPECTED_BYBIT_UID: ${ABI_EXPECTED_BYBIT_UID:?Set the trusted Demo account UID}
       ABI_DRY_RUN: "false"
       ABI_LIVE_TRADING_ENABLED: "true"
       BYBIT_ENV: "demo"

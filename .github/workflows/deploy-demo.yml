@@ -18,7 +18,7 @@ jobs:
       - name: Check required local environment
         run: |
           : "${BBB_DATA_ROOT:?BBB_DATA_ROOT must be set in the runner environment}"
-          : "${BBB_SECRETS_ROOT:?BBB_SECRETS_ROOT must be set in the runner environment}"
+          : "${ABI_EXPECTED_BYBIT_UID:?Set the trusted Demo account UID in the runner environment}"
 
       - name: Load image manifest
         run: |
