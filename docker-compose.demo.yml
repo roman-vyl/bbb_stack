@@ -1,8 +1,18 @@
 services:
   abi:
-    env_file:
-      - ${BBB_SECRETS_ROOT:?BBB_SECRETS_ROOT must be set}/abi/bybit-demo.env
+    restart: "no"
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    memswap_limit: 256m
+    ulimits:
+      core: 0
+    tmpfs:
+      - /run/abi-credentials:rw,noexec,nosuid,nodev,size=65536,uid=1000,gid=1000,mode=0700
     environment:
+      ABI_PROTECTED_CREDENTIALS_DIR: "/run/abi-credentials"
       ABI_DRY_RUN: "false"
       ABI_LIVE_TRADING_ENABLED: "true"
       BYBIT_ENV: "demo"
