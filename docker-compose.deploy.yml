@@ -10,6 +10,9 @@ services:
 
   market-data-service:
     image: ${MDS_IMAGE:?MDS_IMAGE must be set (see deploy/images.env)}
+    environment:
+      # Persist across the standard runner deployment, without a local override.
+      MDS_LOOP_DIAGNOSTICS_ENABLED: "true"
     # No sibling market_data_service checkout exists in deploy mode; the
     # instrument list comes from ${BBB_DATA_ROOT}/mds/markets.toml, so
     # changing it needs no image or pin change.
