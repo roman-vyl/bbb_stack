@@ -9,16 +9,18 @@ service Dockerfiles, or application contracts.
 ## Deployed image versions
 
 [`deploy/images.env`](deploy/images.env) is the source of truth for which
-five immutable GHCR images (tagged by full Git commit SHA) make up the
-current BBB Demo deployment. Update it via a normal PR after a service's
+six immutable GHCR images (tagged by full Git commit SHA) make up the
+current BBB deployment. Update it via a normal PR after a service's
 CI has published a new image on its `main`.
 
 ## Usage (local source build, for development)
 
-Set a data root before rendering or starting the stack:
+Set shared/config and trading roots, plus the trusted account UID, before rendering or starting the stack:
 
 ```sh
 export BBB_DATA_ROOT=/tmp/bbb-live-stack
+export BBB_TRADING_DATA_ROOT=/tmp/bbb-live-stack
+export ABI_EXPECTED_BYBIT_UID=<trusted-demo-uid>
 docker compose config
 docker compose up --build
 ```
@@ -27,7 +29,7 @@ The base composition is safe by default: ABI runs dry-run, live trading is
 disabled, and no exchange credential file is loaded.
 
 For Demo deployment, use the existing late authorization path: configure a trusted
-`ABI_EXPECTED_BYBIT_UID` and start with `docker-compose.demo.yml`. ABI starts LOCKED;
+`ABI_EXPECTED_BYBIT_UID` and select `BYBIT_ENV=demo` in the common Compose. ABI starts LOCKED;
 keys are delivered separately through age/stdin/Unix socket by
 `scripts/authorize_abi.py`, without restart. Do not create plaintext key env files or
 set API keys in Compose/runner environment.
@@ -44,7 +46,7 @@ The service build contexts default to sibling repositories:
 `research-service` is now a full deployment-parity member alongside the
 other four: `docker-compose.deploy.yml` pins it to `${RESEARCH_IMAGE}`
 (`platform: linux/amd64`, same as the others), `deploy/images.env` carries
-its immutable GHCR SHA tag, and the `Deploy Demo` workflow pulls it,
+its immutable GHCR SHA tag, and the `Deploy BBB` workflow pulls it,
 waits for it to become healthy, and verifies its running image ref
 alongside the other four services.
 
@@ -127,15 +129,15 @@ recorded in [`docs/verification-journal-service-v1.md`](docs/verification-journa
 The deploy override requires `JOURNAL_IMAGE`; its pin in `deploy/images.env` is a separate
 change after the journal_service image is published.
 
-## Demo deployment (GHCR images, no local build)
+## Deployment (GHCR images, no local build)
 
-The `Deploy Demo` GitHub Actions workflow (manual `workflow_dispatch`,
+The `Deploy BBB` GitHub Actions workflow (manual `workflow_dispatch`,
 self-hosted Mac runner) pulls the exact images pinned in
 [`deploy/images.env`](deploy/images.env) and recreates the stack without
 building from source:
 
 ```sh
-docker compose -f docker-compose.yml -f docker-compose.demo.yml -f docker-compose.deploy.yml \
+docker compose -f docker-compose.yml -f docker-compose.deploy.yml \
   --env-file deploy/images.env up -d --no-build --remove-orphans
 ```
 
@@ -145,12 +147,15 @@ durable state (MDS data, Runtime journal/state, ABI var, Research
 runs/configs) survives recreate. The workflow does not send bars,
 place/cancel Bybit orders, or change strategy specs; ABI stays in Demo
 mode (`BYBIT_ENV=demo`,
-dry-run disabled only via the existing `docker-compose.demo.yml`
-override, same as manual Demo runs today).
+the Deploy workflow explicitly sets dry-run off and live trading on).
 
-## Mainnet preparation
+## Switching Demo / Mainnet
 
-See [Mainnet cutover runbook](docs/mainnet-cutover.md). Mainnet has a separate override,
-manual workflow and manifest; Demo configuration and pins are preserved. Mainnet ABI pin
-is deliberately empty until its implementation is merged and Docker Publish succeeds.
-Deploy does not authorize ABI, enable strategies, prepare data or perform the cutover.
+[Switching runbook](docs/mainnet-cutover.md): one parameterized Compose, one
+`deploy/images.env` manifest and the existing **Deploy BBB** workflow with an explicit
+`demo`/`mainnet` choice. Shared history/config stays at `BBB_DATA_ROOT`; trading memory
+uses that root for Demo and `BBB_DATA_ROOT/mainnet` for Mainnet. Stop the current stack
+before Deploy. ABI is recreated LOCKED; age authorization is a separate action.
+
+Mainnet requires the published ABI image from PR #58 pinned in the same common manifest;
+the current pins are preserved until that release. No separate Mainnet image set exists.

@@ -1,24 +1,71 @@
-name: Deploy Demo
+name: Deploy BBB
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Bybit environment for the single BBB stack
+        type: choice
+        options: [demo, mainnet]
+        default: demo
+        required: true
 
 permissions:
   contents: read
   packages: read
 
+concurrency:
+  group: bbb-deploy
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: self-hosted
     env:
+      BYBIT_ENV: ${{ inputs.environment }}
+      COMPOSE_PROJECT_NAME: bbb_stack
+      ABI_DRY_RUN: "false"
+      ABI_LIVE_TRADING_ENABLED: "true"
       DOCKER_CONFIG: ${{ github.workspace }}/.docker-config
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check required local environment
+      - name: Select account and trading data (read-only)
         run: |
-          : "${BBB_DATA_ROOT:?BBB_DATA_ROOT must be set in the runner environment}"
-          : "${ABI_EXPECTED_BYBIT_UID:?Set the trusted Demo account UID in the runner environment}"
+          python3 - <<'PYTHON'
+          import json, os
+          from pathlib import Path
+          env = os.environ['BYBIT_ENV']
+          if env not in ('demo', 'mainnet'):
+              raise SystemExit('Choose demo or mainnet')
+          shared = Path(os.environ['BBB_DATA_ROOT']).resolve(strict=True)
+          # Preserve today's Demo layout; Mainnet gets its own trading directories.
+          roots = {'demo': shared, 'mainnet': shared / 'mainnet'}
+          uid = os.environ.get('ABI_MAINNET_EXPECTED_BYBIT_UID' if env == 'mainnet' else 'ABI_EXPECTED_BYBIT_UID', '')
+          if not uid.isascii() or not uid.isdecimal() or uid.startswith('0'):
+              raise SystemExit('Set the trusted UID for the selected account')
+          selected = roots[env].resolve(strict=True)
+          parts = ('abi', 'strategy-runtime/specs', 'strategy-runtime/journal', 'strategy-runtime/state', 'journal')
+          demo = [(roots['demo'] / p).resolve() for p in parts]
+          mainnet = [(roots['mainnet'] / p).resolve() for p in parts]
+          if any(a == b or a in b.parents or b in a.parents for a in demo for b in mainnet):
+              raise SystemExit('Demo and Mainnet trading paths overlap')
+          for part in parts:
+              path = selected / part
+              if not path.is_dir() or any(p.is_symlink() for p in path.rglob('*')):
+                  raise SystemExit('Prepare separate trading directories without symlinks')
+          # Until Runtime has durable state, require a disabled Mainnet catalog; no new marker/store.
+          state = selected / 'strategy-runtime/state/runtime_state.jsonl'
+          if env == 'mainnet' and (not state.exists() or state.stat().st_size == 0):
+              for path in (selected / 'strategy-runtime/specs').iterdir():
+                  if not path.is_file() or path.name.startswith('.') or path.suffix != '.json':
+                      raise SystemExit('Unexpected strategy catalog entry')
+                  item = json.loads(path.read_text())
+                  if not isinstance(item, dict) or item.get('enabled') is not False:
+                      raise SystemExit('First Mainnet launch requires every strategy disabled')
+          with open(os.environ['GITHUB_ENV'], 'a') as out:
+              out.write(f'BBB_TRADING_DATA_ROOT={selected}\nABI_EXPECTED_BYBIT_UID={uid}\n')
+          PYTHON
 
       - name: Load image manifest
         run: |
@@ -42,11 +89,15 @@ jobs:
 
       - name: Validate compose configuration
         run: |
-          docker compose -f docker-compose.yml -f docker-compose.demo.yml -f docker-compose.deploy.yml --env-file deploy/images.env config --quiet
+          docker compose -f docker-compose.yml -f docker-compose.deploy.yml --env-file deploy/images.env config --quiet
 
       - name: Recreate stack (no volume removal)
         run: |
-          docker compose -f docker-compose.yml -f docker-compose.demo.yml -f docker-compose.deploy.yml --env-file deploy/images.env up -d --no-build --remove-orphans
+          if [ -n "$(docker compose -f docker-compose.yml -f docker-compose.deploy.yml --env-file deploy/images.env ps -q)" ]; then
+            echo "::error::Stop the current stack before Deploy"
+            exit 1
+          fi
+          docker compose -f docker-compose.yml -f docker-compose.deploy.yml --env-file deploy/images.env up -d --no-build --remove-orphans --force-recreate
 
       - name: Wait for health/readiness
         run: |
@@ -55,7 +106,7 @@ jobs:
           for i in $(seq 1 30); do
             all_ok=true
             for s in $services; do
-              cid=$(docker compose -f docker-compose.yml -f docker-compose.demo.yml -f docker-compose.deploy.yml --env-file deploy/images.env ps -q "$s")
+              cid=$(docker compose -f docker-compose.yml -f docker-compose.deploy.yml --env-file deploy/images.env ps -q "$s")
               status=$(docker inspect --format '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo "unknown")
               if [ "$status" != "healthy" ]; then
                 all_ok=false
@@ -69,7 +120,7 @@ jobs:
           done
           if [ "$all_ok" != true ]; then
             echo "::error::One or more services failed to become healthy in time"
-            docker compose -f docker-compose.yml -f docker-compose.demo.yml -f docker-compose.deploy.yml --env-file deploy/images.env ps
+            docker compose -f docker-compose.yml -f docker-compose.deploy.yml --env-file deploy/images.env ps
             exit 1
           fi
 
@@ -83,7 +134,7 @@ jobs:
           set -euo pipefail
           check() {
             svc="$1"; expected="$2"
-            cid=$(docker compose -f docker-compose.yml -f docker-compose.demo.yml -f docker-compose.deploy.yml --env-file deploy/images.env ps -q "$svc")
+            cid=$(docker compose -f docker-compose.yml -f docker-compose.deploy.yml --env-file deploy/images.env ps -q "$svc")
             actual=$(docker inspect --format '{{.Config.Image}}' "$cid")
             if [ "$actual" != "$expected" ]; then
               echo "::error::$svc image mismatch: running=$actual expected=$expected"
@@ -98,21 +149,28 @@ jobs:
           check research-service "$RESEARCH_IMAGE"
           check journal-service "$JOURNAL_IMAGE"
 
-      - name: Verify ABI stays in Demo mode
+      - name: Verify selected environment and locked ABI
         run: |
-          set -euo pipefail
-          cid=$(docker compose -f docker-compose.yml -f docker-compose.demo.yml -f docker-compose.deploy.yml --env-file deploy/images.env ps -q abi)
-          bybit_env=$(docker exec "$cid" printenv BYBIT_ENV)
-          if [ "$bybit_env" != "demo" ]; then
-            echo "::error::ABI BYBIT_ENV is not demo (got: $bybit_env)"
-            exit 1
-          fi
-          echo "ABI BYBIT_ENV confirmed: demo"
+          python3 - <<'PYTHON'
+          import json, os, urllib.request
+          with urllib.request.urlopen('http://127.0.0.1:8787/execution/mode', timeout=5) as response:
+              mode = json.load(response)
+          if mode['bybitEnvironment'] != os.environ['BYBIT_ENV'] or mode['canExecuteLive']:
+              raise SystemExit('Unexpected ABI execution mode')
+          # Query the existing socket client inside ABI; never deliver credentials here.
+          import subprocess
+          cid = subprocess.check_output(['docker', 'compose', '-f', 'docker-compose.yml', '-f',
+              'docker-compose.deploy.yml', '--env-file', 'deploy/images.env', 'ps', '-q', 'abi']).decode().strip()
+          reply = subprocess.check_output(['docker', 'exec', '-i', cid, 'node',
+              '/app/dist/authorization/credentialRelay.js'], input=b'{"v":1,"op":"status"}\n')
+          if json.loads(reply)['state'] != 'LOCKED':
+              raise SystemExit('ABI must be LOCKED after Deploy')
+          PYTHON
 
       - name: Summary
         if: always()
         run: |
-          echo "## Deploy Demo summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Deploy BBB summary" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "- MDS: $MDS_IMAGE" >> "$GITHUB_STEP_SUMMARY"
           echo "- Strategy Engine: $STRATEGY_ENGINE_IMAGE" >> "$GITHUB_STEP_SUMMARY"
@@ -120,7 +178,7 @@ jobs:
           echo "- ABI: $ABI_IMAGE" >> "$GITHUB_STEP_SUMMARY"
           echo "- Research Service: $RESEARCH_IMAGE" >> "$GITHUB_STEP_SUMMARY"
           echo "- Journal Service: $JOURNAL_IMAGE" >> "$GITHUB_STEP_SUMMARY"
-          echo "- BBB_DATA_ROOT: (unset in log by design)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Environment: $BYBIT_ENV" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Clean up local docker credentials
         if: always()

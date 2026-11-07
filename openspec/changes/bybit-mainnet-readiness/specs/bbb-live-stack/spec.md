@@ -1,55 +1,58 @@
 ## ADDED Requirements
 
-### Requirement: Explicit Mainnet Deployment
+### Requirement: One Deployment With Explicit Environment
 
-The stack SHALL provide an explicit manual Mainnet deployment using immutable image pins, the existing services and startup ordering. It SHALL preserve the existing Demo deployment configuration and pins. Mainnet deployment SHALL fail before container mutation if its trusted UID, separate trading data root or preserved MDS/Research paths are absent or unsafe.
+The existing deployment SHALL select `demo` or `mainnet` for one BBB stack, using the same six services, Compose configuration, immutable image manifest, startup ordering and age authorization mechanism. It SHALL NOT introduce a separate Mainnet workflow or image manifest.
 
-#### Scenario: Mainnet configuration
-- **WHEN** Mainnet configuration is rendered
-- **THEN** ABI SHALL use `BYBIT_ENV=mainnet`, `ABI_DRY_RUN=false`, `ABI_LIVE_TRADING_ENABLED=true`, `ABI_POSITION_SIZING_MODE=risk`, `ABI_BYBIT_LINEAR_POSITION_BINDING_MODE=hedge` and exchange facts enabled
-- **AND** Runtime SHALL wait for healthy ABI and Engine, MDS SHALL wait for healthy Runtime, Research SHALL wait for Engine and MDS, and Journal SHALL have no dependency edges
-- **AND** all published ports SHALL remain loopback-only
+#### Scenario: Environment selected
++- **WHEN** the operator selects Demo or Mainnet after stopping the stack
++- **THEN** Deploy SHALL select the environment's trusted UID, `BYBIT_ENV` and trading data root
++- **AND** the six images, service DNS, loopback ports and startup dependencies SHALL remain the same
++- **AND** deployment SHALL fail before recreation if the current stack is still running
++
++### Requirement: Isolated Trading Memory With Shared History
 
-#### Scenario: Invalid environment isolation
-- **WHEN** a Mainnet trading mount aliases a Demo trading mount, including through symlinks, or a required preserved history directory is missing
-- **THEN** Mainnet deployment SHALL fail before `up` and SHALL NOT create an empty replacement for preserved history
+Demo and Mainnet SHALL use separate ABI var, Runtime state/journal/catalog and Journal database directories. MDS/Research history and service configuration SHALL be preserved.
 
-### Requirement: Mainnet Late Authorization
+#### Scenario: Switching environment
++- **WHEN** the selected environment changes
++- **THEN** trading data mounts SHALL change together, including Research export catalog and Journal Runtime source
++- **AND** Deploy SHALL reject overlapping Demo/Mainnet trading paths and trading symlinks
++- **AND** Deploy SHALL NOT reset, archive or copy data
++
++### Requirement: Deploy Leaves ABI Locked
 
-Each Mainnet Deploy SHALL recreate ABI in LOCKED without credentials. Authorization SHALL use the existing age/stdin/Unix-socket mechanism without restart. Mainnet verification SHALL use the fixed Mainnet API host and retain the existing trusted UID and trading-rights checks, bounded response/deadline, failure classification and retries. Live execution SHALL retain authorization, dry-run, live-enabled and readiness gates while permitting Mainnet.
+Every Deploy SHALL recreate ABI without credentials and verify LOCKED. Separate age/socket authorization SHALL work without restart. Existing authorization, dry-run, live-enabled, UID/rights and trading-readiness gates SHALL remain effective.
 
-#### Scenario: Deployment completes without a key
-- **WHEN** Mainnet Deploy completes, including a repeated Deploy with unchanged pins
-- **THEN** ABI SHALL report LOCKED and `canExecuteLive=false`, and process liveness SHALL pass without waiting for trading readiness
-- **AND** Deploy SHALL NOT decrypt credentials, authorize ABI or enable strategies
+#### Scenario: Repeat deploy with unchanged pins
++- **WHEN** Deploy recreates the selected environment with the same pins
++- **THEN** ABI SHALL report LOCKED and `canExecuteLive=false`
++- **AND** Deploy SHALL NOT authorize ABI or enable strategies
++
++### Requirement: First Mainnet Launch Has Disabled Strategies
 
-#### Scenario: Mainnet credentials are checked
-- **WHEN** a candidate is delivered through the existing socket
-- **THEN** verification SHALL use `https://api.bybit.com/v5/user/query-api`
-- **AND** only the trusted UID, `readOnly=0` and required category rights SHALL allow authorization
-- **AND** wrong UID, missing rights and rejected keys SHALL remain rejected; temporary failures SHALL remain fail-closed and retryable
-- **AND** successful authorization SHALL NOT require container restart or bypass trading readiness
+Mainnet SHALL start with fresh trading memory and every strategy disabled. Until Runtime has nonempty durable state, Deploy SHALL require all deployment JSON files to have `enabled: false`.
 
-### Requirement: Environment Specific Trading Memory
+#### Scenario: Enabled first-launch deployment
++- **WHEN** the Mainnet catalog contains enabled, invalid JSON or unsupported entries before durable state exists
++- **THEN** Deploy SHALL fail before startup
++- **AND** strategies and files SHALL remain unchanged
++
++#### Scenario: Later deployment
++- **WHEN** Mainnet has its own durable state and is redeployed
++- **THEN** Deploy SHALL preserve its data and enabled values, while recreating ABI LOCKED
++
++### Requirement: Account Checks Before Strategy Enablement
 
-Demo and Mainnet SHALL NOT share Runtime state/journal/catalog, ABI durable execution memory or Central Journal storage. A first Mainnet launch SHALL start with fresh trading memory and every strategy disabled. MDS and Research history SHALL be retained without two concurrent writers.
-
-#### Scenario: First Mainnet launch
-- **WHEN** the approved operational cutover prepares Mainnet
-- **THEN** Demo trading files SHALL be preserved and consistently archived, Mainnet Runtime state/journal, ABI correlation/facts/diagnostics and Journal database SHALL start fresh
-- **AND** any copied strategy deployment SHALL have `enabled: false` before Runtime starts
-- **AND** copied strategy parameters and Engine/Runtime/ABI entry-mode configuration SHALL otherwise be preserved
-- **AND** Mainnet Research exports SHALL target only the Mainnet strategy catalog
-
-#### Scenario: Subsequent deploy
-- **WHEN** Mainnet is redeployed after the first launch
-- **THEN** its own durable memory SHALL survive, without automatic reset, archive restoration or strategy enablement
-
-### Requirement: Account Preflight Before Strategy Enablement
-
-The cutover runbook SHALL require separate authorization followed by read-only confirmation of the target Unified linear USDT account, cross margin (`REGULAR_MARGIN`), hedge slots for intended symbols, account positions/orders and configured strategy risks before any strategy is enabled. It SHALL NOT automatically change exchange modes or execute a trading smoke.
-
-#### Scenario: Fresh memory does not prove account readiness
-- **WHEN** ABI is authorized with no active local bindings
-- **THEN** successful health/readiness SHALL NOT substitute for account and per-symbol preflight
-- **AND** strategies SHALL remain disabled if margin, hedge geometry or account exposure is incompatible or unverified
+The switching runbook SHALL require read-only confirmation of the trusted UID, Unified linear USDT account, cross margin (`REGULAR_MARGIN`), per-symbol hedge slots, orders/positions and strategy risks before strategy enablement. It SHALL NOT automate exchange mode changes or a trading smoke.
++
++#### Scenario: Empty local bindings
++- **WHEN** ABI is authorized and ready with no active local bindings
++- **THEN** readiness SHALL NOT substitute for account/per-symbol checks
++- **AND** strategies SHALL remain disabled until the owner enables them separately
++
++## REMOVED Requirements
++
++### Requirement: Bybit Demo ABI Override
++**Reason**: One parameterized Compose serves both environments and late authorization replaces plaintext env_file.
++**Migration**: Select `BYBIT_ENV`, trusted UID and trading root in the common Deploy; authorize separately through the existing age/socket client.

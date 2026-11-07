@@ -1,6 +1,6 @@
 ## Context
 
-Аудит 2026-11-07: исходники, Compose, workflow и закреплённые версии; работающие контейнеры, runner environment, ключи и каталоги данных не инспектировались. Состояние реального аккаунта не подтверждено. Мотивация — в `proposal.md`.
+Аудит 2026-11-07: исходники, Compose, workflow и закреплённые версии; работающие контейнеры, runner environment, ключи и каталоги данных не инспектировались. Состояние реального аккаунта не подтверждено. Мотивация — в `proposal.md`. Решение пересмотрено по указанию владельца: один стек и параметризация существующего Deploy.
 
 Проверенные ревизии: Stack `333072891d3e402725bf6e676b551101e2ae0da7`, ABI `c21ca11d9795099a4a1d2d3e261da181c98cbb75`; обе совпадают с GitHub main на момент аудита. Остальные deployment pins — `deploy/images.env`. Локальные Runtime/MDS/Journal/Research checkout отличаются от pins; config Runtime и Journal проверен через GitHub именно по pins, MDS settings — по закреплённому git object. Это аудит реализации, не аттестация фактически запущенных образов.
 
@@ -22,49 +22,65 @@
 
 ## Goals / Non-Goals
 
-**Goals:** разрешить существующий execution path для Mainnet и сделать явными границы окружений и безопасный первый старт.
-
-**Non-Goals:** новые сервисы, secret storage, переключатель режимов биржи, изменение sizing/торговых решений, автоматический перенос открытых сделок, одновременный Demo/Mainnet на текущих host ports. Сейчас создаются только planning artifacts.
+Один набор шести образов, один Compose и один Deploy. Без отдельного Mainnet workflow,
+manifest, проверочных сервисов/скриптов или новой системы управления окружениями.
 
 ## Decisions
 
-1. **Отдельные файлы Mainnet.** Добавить `docker-compose.mainnet.yml`, `deploy/images.mainnet.env`, `.github/workflows/deploy-mainnet.yml`; использовать порядок base + deploy + mainnet, без demo override. Mainnet должен идти последним: `docker-compose.deploy.yml` уже заменяет MDS volumes через `!override` и иначе вернёт их на неверный root. Это сохраняет рабочий Demo и его manifest. Параметризация существующего Demo workflow затронула бы рабочий путь и расширила scope. Mainnet manifest содержит все шесть точных SHA refs: первоначально прежние пять, ABI — новый опубликованный SHA после отдельного ABI PR/CI. Не использовать main/latest и не загружать оба manifest в GITHUB_ENV: shell env перекрывает `--env-file`.
-
-2. **Изоляция существующими bind mounts.** Mainnet override требует `BBB_MAINNET_DATA_ROOT` и `BBB_DEMO_DATA_ROOT` для проверки границ; workflow устанавливает `BBB_DATA_ROOT` равным Mainnet root. Все торговые каталоги берутся оттуда. В override явно заменить полные volume lists MDS и Research через уже используемый `!override`: MDS config/data берутся из прежнего `${BBB_DEMO_DATA_ROOT}/mds` и `/market-data`; Research `/data` — из прежнего `/research`, `/runtime-specs` — из Mainnet root. Это сохраняет данные без копирования больших SQLite и изменения приложения. Проверять canonical paths всех торговых директорий на пересечение с Demo, включая symlinks; mounts Research catalog, Runtime source и ABI var должны согласовываться. Для существующей истории проверять наличие директорий/файлов до `up`, запретить автоматическое создание отсутствующих source directories в новых mounts.
-
-3. **Один стек в момент времени.** Сохранить существующий Compose project `bbb_stack`, DNS и ports. Будущий cutover останавливает Demo после согласованного drain, перед запуском Mainnet; параллельные Deploy Demo/Mainnet и два writer MDS/Research запрещены операционным порядком. Это не новый параллельный стек. Никакого stop во время текущего аудита. Mainnet workflow до `up` проверяет, что старые контейнеры этого проекта остановлены либо относятся к тому же Mainnet root/environment; работающий Demo не заменяет автоматически. В документации явно запретить одновременный запуск двух workflow; Mainnet jobs сериализовать, не отменяя выполняющийся deploy.
-
-4. **Deploy без авторизации.** Сохранить GHCR login/cleanup, pull, Compose validation, `--no-build`, отсутствие volume removal, health polling с ошибкой по timeout и проверку всех шести running image refs. Для Mainnet использовать `up -d --no-build --remove-orphans --force-recreate`: текущий `up` без force может оставить AUTHORIZED контейнер при неизменной конфигурации. Сохранить ABI tmpfs 0700 uid/gid 1000, core=0, memory=memswap; не монтировать `.age`, не читать ключи в workflow. После Deploy проверить Mainnet env, `authorization=LOCKED`, `canExecuteLive=false`, ABI `/health/live`, Runtime live/ready. ABI `/health/ready=503` до авторизации ожидаем и не блокирует запуск Runtime: Compose проверяет ABI liveness. Авторизация отдельной существующей командой через найденный ABI, без restart.
+1. В `docker-compose.yml` перенести существующую ABI tmpfs/no-swap/core защиту и параметры
+   risk/hedge/facts. Параметризовать `BYBIT_ENV`, UID, live flags и `BBB_TRADING_DATA_ROOT`.
+   Вне Deploy сохраняется dry-run. Удалить `docker-compose.demo.yml`: конфигурация общая.
+   Существующий `docker-compose.deploy.yml` остаётся только слоем закреплённых образов.
+2. Один `deploy/images.env` для Demo/Mainnet. Никаких изменений SHA до опубликованного
+   релиза ABI #58; после его merge/CI/Docker Publish обновить общий ABI pin отдельным PR.
+3. В существующий `.github/workflows/deploy-demo.yml` добавить выбор `demo/mainnet`, назвать
+   workflow Deploy BBB. Общий project — `bbb_stack`, последовательные Deploy без отмены
+   выполняющегося задания. Сначала оператор останавливает стек; workflow отказывает при
+   работающих контейнерах. Затем `up --force-recreate` сохраняет память и возвращает ABI
+   в LOCKED. Сохранить существующие pull, health, image-ref checks и GHCR cleanup;
+   LOCKED проверить через существующий socket relay, без передачи credentials.
+4. `BBB_DATA_ROOT` остаётся общим root истории/конфигурации. Demo trading root — прежний
+   `BBB_DATA_ROOT`, Mainnet — `BBB_DATA_ROOT/mainnet`. Это сохраняет Demo layout без
+   переноса. ABI var, Runtime specs/state/journal и Journal DB используют выбранный root;
+   Research экспортирует в выбранные specs. MDS/Research history и настройки ABI/Engine/
+   Runtime остаются прежними. Workflow проверяет отсутствие пересечения trading paths и
+   symlinks. Один стек означает одного writer общей истории.
+5. UID Demo берётся из прежнего `ABI_EXPECTED_BYBIT_UID`, Mainnet — из
+   `ABI_MAINNET_EXPECTED_BYBIT_UID`; в контейнер передаётся один selected UID. Ключи не
+   входят в конфигурацию: прежняя age/socket-команда после Deploy, без restart.
+6. До непустого Runtime state Mainnet catalog должен целиком состоять из JSON deployments
+   с `enabled: false`; проверка inline в существующем workflow. Нового marker/store или
+   first-launch scheduler нет. Deploy не отключает стратегии и не сбрасывает данные.
 
 ## Migration Plan
 
-Только будущая инструкция после разрешения; сейчас ни один шаг не выполняется.
+Только инструкция будущего отдельно разрешённого переключения:
 
-1. Выпустить и проверить ABI-правку отдельно; подготовить Mainnet override/workflow/manifest и runbook без запуска. Записать прежние image pins и конфигурацию для rollback. Mainnet UID берётся из доверенного источника отдельно от предъявленного ключа; не наследовать Demo UID runner автоматически: использовать отдельную переменную Mainnet UID и передавать её как `ABI_EXPECTED_BYBIT_UID`.
-2. Согласовать остановку торговли Demo и проверить открытые orders/positions; локальный reset не отменяет биржевую экспозицию. После завершения активных циклов остановить единственный стек. Сделать согласованный архив перечисленных каталогов: файлы SQLite вместе с имеющимися `-wal`, `-shm`, `-journal`, после остановки writers. Не копировать только основной SQLite во время записи.
+1. Выпустить ABI #58 и закрепить его опубликованный SHA в общем manifest. Записать прежние
+   pins/конфигурацию. Проверить экспозицию и согласовать завершение активных циклов.
+2. Остановить стек. Согласованно архивировать `abi/`, `strategy-runtime/state/`,
+   `strategy-runtime/journal/`, `strategy-runtime/specs/`, `journal/` прежнего root.
+   SQLite сохранять с sidecars после остановки writers; оригиналы Demo оставить на месте.
+3. В `BBB_DATA_ROOT/mainnet` подготовить пустые `abi/`, `strategy-runtime/state/`,
+   `strategy-runtime/journal/`, `journal/`; deployment JSON скопировать в отдельные specs,
+   установив каждый `enabled: false`, остальные параметры сохранить. Старый correlation,
+   facts, Runtime state/journal и Journal cursors не переносить. Общие config и история
+   MDS/Research не меняются; новый facts SQLite автоматически получит Mainnet environment.
+4. Выбрать окружение в Deploy BBB и запустить те же шесть образов. Убедиться в LOCKED,
+   затем отдельно авторизовать соответствующим `.age`. До включения стратегий read-only
+   проверить trusted UID, UNIFIED/linear/USDT, cross `REGULAR_MARGIN`, hedge slots каждого
+   будущего символа, баланс, orders/positions и risk_multiplier. READY с пустыми bindings
+   не доказывает hedge всех будущих символов. Режимы аккаунта автоматически не менять.
+5. Стратегии включать только отдельным решением существующим enabled-control API.
 
-| Путь относительно прежнего data root | Архив / Mainnet |
-| --- | --- |
-| `strategy-runtime/state/` (`runtime_state.jsonl`) | Архивировать целиком, Mainnet начать пустым: исключить replay старых циклов/management state. |
-| `strategy-runtime/journal/` (`runtime.jsonl`) | Архивировать целиком; новый журнал. Journal source указывает на него. |
-| `strategy-runtime/specs/` | Сохранить оригинал и архив; копировать только deployment definitions в отдельный Mainnet catalog с каждым `enabled: false`. Не редактировать оригинал. |
-| `abi/` без секретов | Архивировать весь var, включая `abi_entry_package_correlation.jsonl`, `abi_diagnostics.jsonl`, `abi_exchange_facts_demo.sqlite3` и SQLite sidecars; неизвестные/legacy var-файлы тоже сохранить. В Mainnet не переносить торговые файлы; facts создаётся как `abi_exchange_facts_mainnet.sqlite3`. Одного нового имени facts недостаточно: correlation не имеет environment namespace. |
-| `abi/config/abi.json` | Сохранить и скопировать конфигурацию, не торговое состояние. |
-| `journal/` (`journal.sqlite3` и sidecars) | Архивировать целиком; новая БД и ingest cursors. Не направлять старую БД на новый Runtime source. |
-| `strategy-runtime/config/runtime.toml`, `strategy-engine/engine.toml` | Сохранить и скопировать в Mainnet root без изменения торговых параметров; отсутствующие optional files не выдумывать. |
-| `market-data/`, `mds/`, `research/` | Сохранить на месте полностью и повторно смонтировать; не очищать, не пересоздавать, не переносить в trading archive. |
-
-3. Подготовить Mainnet dirs и отключённый catalog. До первого `up` проверить весь catalog валидным загрузчиком/контрактом: отсутствие enabled, невалидных или непрочитанных deployment-файлов; проверить пустоту новой trading memory и права mounts. Подготовка/архив — одноразовая ручная операция; повторный Deploy ничего не обнуляет и не отключает автоматически.
-4. Выполнить отдельно разрешённый Mainnet Deploy; подтвердить image refs, mounts, startup order, LOCKED и отсутствие включённых стратегий по Runtime catalog API. При сбое оставить ABI LOCKED, не авторизовать.
-5. Владелец отдельно создаёт и шифрует Mainnet keys существующим age-механизмом. Авторизовать без рестарта; сверить UID, AUTHORIZED и trading readiness. Read-only проверить UNIFIED, REGULAR_MARGIN, hedge slots каждого будущего linear USDT символа, balance и отсутствие несогласованных orders/positions. Никаких switch-position-mode, set-margin-mode или тестовых сделок. Если требуется настройка аккаунта, её выполняет владелец отдельно; до подтверждения стратегии выключены. Проверить каждый `risk_multiplier`; bankroll — весь `totalWalletBalance`, не отдельный бюджет стратегии.
-6. Стратегии остаются выключены и после авторизации. Включение — отдельное решение владельца существующим enabled-control API.
-
-Rollback: остановить Mainnet, сохранив его собственные данные; проверить/согласовать его биржевые orders/positions отдельно. Возврат прежних Demo pins/config/data root не закрывает Mainnet позиции. Возобновить Demo только отдельным разрешённым действием с его собственной памятью и авторизацией; не подсовывать Mainnet state старому ABI и не восстанавливать Demo поверх Mainnet root.
+Rollback: остановить стек, сохранить Mainnet память и проверить биржевые orders/positions;
+выбрать Demo и его собственные данные/ключ. Возврат конфигурации не закрывает Mainnet позиции.
+Полная таблица файлов и команды — `docs/mainnet-cutover.md`.
 
 ## Risks / Trade-offs
 
-- Старые README и stack spec описывают plaintext env_file, хотя текущий Demo override его уже не использует → в реализации обновить затронутые инструкции; не брать устаревший текст за описание текущего кода.
-- Общий project/ports сохраняет простоту, требует окна переключения и дисциплины единственного Deploy → не обещать zero downtime или параллельную работу; preflight отказывает при работающем Demo.
-- Пустая локальная память не доказывает пустой аккаунт, hedge и cross → обязательный read-only preflight до enabled; readiness не заменяет эту проверку.
-- Изменение только имени facts БД оставляет Runtime/ABI replay и Journal cursors от Demo → отделить все торговые mounts; MDS/Research оставить прежними с одним writer.
-- Фактические host paths, конфигурация и UID не читались → перед cutover сверить их с этим планом; неизвестные значения сейчас не подставлять.
+- Один project/ports требует остановки при переключении; параллельных стеков нет.
+- До непустого state проверка disabled консервативно действует и на повторном Deploy.
+  Нельзя создавать фиктивный state, чтобы обойти первый запуск.
+- Работающие контейнеры/host data/account в рамках Apply не инспектируются и не меняются;
+  реальные пути, UID и настройки аккаунта подтверждаются владельцем при переключении.
