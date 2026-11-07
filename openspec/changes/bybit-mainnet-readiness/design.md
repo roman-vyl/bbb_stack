@@ -35,22 +35,25 @@ manifest, проверочных сервисов/скриптов или нов
    релиза ABI #58; после его merge/CI/Docker Publish обновить общий ABI pin отдельным PR.
 3. В существующий `.github/workflows/deploy-demo.yml` добавить выбор `demo/mainnet`, назвать
    workflow Deploy BBB. Общий project — `bbb_stack`, последовательные Deploy без отмены
-   выполняющегося задания. Сначала оператор останавливает стек; workflow отказывает при
-   работающих контейнерах. Затем `up --force-recreate` сохраняет память и возвращает ABI
-   в LOCKED. Сохранить существующие pull, health, image-ref checks и GHCR cleanup;
-   LOCKED проверить через существующий socket relay, без передачи credentials.
+   выполняющегося задания. Обычный Deploy в том же окружении использует прежний
+   `up -d --no-build --remove-orphans` без остановки и force-recreate. Если контейнеры
+   работают, сравнить выбранное окружение с конфигурацией существующего ABI (включая
+   остановленный ABI при других работающих контейнерах); только смена окружения требует
+   предварительной ручной остановки. Сохранить pull, health, image-ref checks и cleanup.
+   Созданный заново ABI начинает LOCKED; неизменённый сохраняет авторизацию. Workflow
+   не управляет credentials и не требует LOCKED от неизменённого ABI.
 4. `BBB_DATA_ROOT` остаётся общим root истории/конфигурации. Demo trading root — прежний
    `BBB_DATA_ROOT`, Mainnet — `BBB_DATA_ROOT/mainnet`. Это сохраняет Demo layout без
    переноса. ABI var, Runtime specs/state/journal и Journal DB используют выбранный root;
    Research экспортирует в выбранные specs. MDS/Research history и настройки ABI/Engine/
-   Runtime остаются прежними. Workflow проверяет отсутствие пересечения trading paths и
-   symlinks. Один стек означает одного writer общей истории.
+   Runtime остаются прежними. Раздельные directories подготавливает оператор; новых
+   проверочных скриптов/миграций нет. Один стек означает одного writer общей истории.
 5. UID Demo берётся из прежнего `ABI_EXPECTED_BYBIT_UID`, Mainnet — из
    `ABI_MAINNET_EXPECTED_BYBIT_UID`; в контейнер передаётся один selected UID. Ключи не
    входят в конфигурацию: прежняя age/socket-команда после Deploy, без restart.
-6. До непустого Runtime state Mainnet catalog должен целиком состоять из JSON deployments
-   с `enabled: false`; проверка inline в существующем workflow. Нового marker/store или
-   first-launch scheduler нет. Deploy не отключает стратегии и не сбрасывает данные.
+6. Чистая память и disabled catalog первого Mainnet-запуска — ручная подготовка оператора,
+   как и бэкап. Deploy не определяет первый запуск по state, не проверяет catalog и
+   не меняет enabled/disabled. При возврате окружение получает собственную прежнюю память.
 
 ## Migration Plan
 
@@ -66,8 +69,8 @@ manifest, проверочных сервисов/скриптов или нов
    установив каждый `enabled: false`, остальные параметры сохранить. Старый correlation,
    facts, Runtime state/journal и Journal cursors не переносить. Общие config и история
    MDS/Research не меняются; новый facts SQLite автоматически получит Mainnet environment.
-4. Выбрать окружение в Deploy BBB и запустить те же шесть образов. Убедиться в LOCKED,
-   затем отдельно авторизовать соответствующим `.age`. До включения стратегий read-only
+4. Выбрать окружение в Deploy BBB и запустить те же шесть образов. Созданный заново ABI
+   будет LOCKED; отдельно авторизовать его соответствующим `.age`. До включения стратегий read-only
    проверить trusted UID, UNIFIED/linear/USDT, cross `REGULAR_MARGIN`, hedge slots каждого
    будущего символа, баланс, orders/positions и risk_multiplier. READY с пустыми bindings
    не доказывает hedge всех будущих символов. Режимы аккаунта автоматически не менять.
@@ -80,7 +83,5 @@ Rollback: остановить стек, сохранить Mainnet память
 ## Risks / Trade-offs
 
 - Один project/ports требует остановки при переключении; параллельных стеков нет.
-- До непустого state проверка disabled консервативно действует и на повторном Deploy.
-  Нельзя создавать фиктивный state, чтобы обойти первый запуск.
 - Работающие контейнеры/host data/account в рамках Apply не инспектируются и не меняются;
   реальные пути, UID и настройки аккаунта подтверждаются владельцем при переключении.

@@ -6,8 +6,8 @@
 
 - [x] 2.1 Параметризовать общий Compose; перенести ABI auth-защиту, убрать environment-specific overrides.
 - [x] 2.2 Расширить существующий Deploy выбором demo/mainnet и одним общим manifest; удалить отдельную Mainnet инфраструктуру из #109.
-- [x] 2.3 Сохранить изоляцию памяти, LOCKED после Deploy и disabled первый Mainnet catalog; не менять данные/стратегии автоматически.
-- [x] 2.4 Проверить оба Compose render, общие images/history/order, отказы при смешении памяти и enabled первом запуске; выполнить existing tests и YAML/bash validation.
+- [x] 2.3 Сохранить изоляцию памяти и обычный Compose up: остановка только при смене окружения, LOCKED только у созданного заново ABI. Первый Mainnet catalog подготавливается вручную; данные/стратегии автоматически не менять.
+- [x] 2.4 Проверить Demo→Demo, Mainnet→Mainnet, запрет смены работающего Demo и переход после остановки; проверить сохранение state/спецификаций и отсутствие принудительного сброса авторизации. Выполнить existing tests и YAML/bash validation.
 - [ ] 2.5 После merge ABI #58 и успешного Docker Publish закрепить опубликованный ABI SHA в общем `deploy/images.env` отдельным PR.
 
 ## 3. Ревью

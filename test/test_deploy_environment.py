@@ -23,14 +23,59 @@ class EnvironmentSwitchTests(unittest.TestCase):
                 (root/part).mkdir(parents=True, exist_ok=True)
         self.env = dict(os.environ, BBB_DATA_ROOT=str(self.shared), ABI_EXPECTED_BYBIT_UID='123',
                         ABI_MAINNET_EXPECTED_BYBIT_UID='456', GITHUB_ENV=str(self.shared/'output.env'))
-        self.selection = textwrap.dedent(WORKFLOW.read_text().split("python3 - <<'PYTHON'\n", 1)[1].split('\n          PYTHON', 1)[0])
+        workflow = WORKFLOW.read_text()
+        self.selection = textwrap.dedent(workflow.split("python3 - <<'PYTHON'\n", 1)[1].split('\n          PYTHON', 1)[0])
+        self._update = textwrap.dedent(workflow.split('      - name: Update stack (no volume removal)\n        run: |\n', 1)[1].split('\n      - name:', 1)[0])
+        # Fake Docker handles only discovery/inspect/up. Never contacts the host daemon.
+        directory = self.shared/'bin'
+        directory.mkdir()
+        docker = directory/'docker'
+        docker.write_text('''#!/usr/bin/env python3
+import json, os, sys
+from pathlib import Path
+args = sys.argv[1:]
+with open(os.environ['CALLS'], 'a') as out:
+    out.write(json.dumps(args) + '\\n')
+if 'ps' in args:
+    if '-a' in args: print('existing-abi')
+    elif os.environ['RUNNING'] == 'yes': print('running-service')
+elif args[0] == 'inspect':
+    print('BYBIT_ENV=' + os.environ['CURRENT_ENV'])
+elif 'up' not in args:
+    raise SystemExit('Unexpected Docker call')
+''')
+        docker.chmod(0o755)
+        self.fake_env = dict(self.env, PATH=str(directory)+os.pathsep+os.environ['PATH'], CALLS=str(self.shared/'calls.jsonl'))
 
     def select(self, environment):
         with patch.dict(os.environ, dict(self.env, BYBIT_ENV=environment), clear=True):
             exec(compile(self.selection, str(WORKFLOW), 'exec'), {})
         return dict(line.split('=', 1) for line in (self.shared/'output.env').read_text().splitlines())
 
-    def test_both_environments_use_same_images_history_and_six_services(self):
+    def update(self, current, selected, running):
+        log = self.shared/'calls.jsonl'
+        log.write_text('')
+        result = subprocess.run(['bash', '-c', self._update], env=dict(self.fake_env,
+            CURRENT_ENV=current, BYBIT_ENV=selected, RUNNING='yes' if running else 'no'), capture_output=True)
+        calls = [json.loads(line) for line in log.read_text().splitlines()]
+        return result, calls
+
+    def test_four_deploy_scenarios(self):
+        for current, selected, running, allowed in [('demo', 'demo', True, True), ('mainnet', 'mainnet', True, True),
+                ('demo', 'mainnet', True, False), ('demo', 'mainnet', False, True), ('mainnet', 'demo', True, False)]:
+            with self.subTest(current=current, selected=selected, running=running):
+                result, calls = self.update(current, selected, running)
+                self.assertEqual(result.returncode == 0, allowed, result.stderr.decode())
+                ups = [call for call in calls if 'up' in call]
+                self.assertEqual(len(ups), int(allowed))
+                if allowed:
+                    self.assertEqual(ups[0][-4:], ['up', '-d', '--no-build', '--remove-orphans'])
+                self.assertFalse(any(arg in ('stop', 'down', 'restart', 'exec', '--force-recreate') for call in calls for arg in call))
+        # Running MDS/Runtime with a stopped Demo ABI still blocks a switch: inspect uses ps -a.
+        _, calls = self.update('demo', 'mainnet', True)
+        self.assertTrue(any('ps' in call and '-a' in call for call in calls))
+
+    def test_both_environments_use_same_images_history_and_selected_memory(self):
         configs = []
         for environment in ('demo', 'mainnet'):
             selected = self.select(environment)
@@ -52,50 +97,27 @@ class EnvironmentSwitchTests(unittest.TestCase):
             self.assertEqual(configs[0][service]['volumes'], configs[1][service]['volumes'])
         self.assertEqual(configs[0]['strategy-runtime']['depends_on'], configs[1]['strategy-runtime']['depends_on'])
 
-    def test_first_mainnet_refuses_enabled_or_invalid_deployment(self):
-        file = self.shared/'mainnet/strategy-runtime/specs/strategy.json'
-        for value in ('{"enabled": true}', '{"enabled": "false"}', '{}', 'not json'):
-            file.write_text(value)
-            with self.assertRaises((SystemExit, ValueError)):
-                self.select('mainnet')
-        file.write_text('{"enabled": false}')
-        self.select('mainnet')
-        # Normal redeployment never edits catalog or durable state.
-        state = self.shared/'mainnet/strategy-runtime/state/runtime_state.jsonl'
-        state.write_text('fixture durable state')
-        file.write_text('{"enabled": true}')
-        self.select('mainnet')
-        self.assertEqual(file.read_text(), '{"enabled": true}')
-        self.assertEqual(state.read_text(), 'fixture durable state')
-
-    def test_deploy_requires_locked_socket_state_after_recreation(self):
+    def test_repeat_deploy_preserves_memory_and_does_not_reset_authorization(self):
+        files = []
+        for root in (self.shared, self.shared/'mainnet'):
+            for relative in ('abi/correlation.jsonl', 'abi/facts.sqlite3', 'strategy-runtime/state/runtime_state.jsonl',
+                             'strategy-runtime/journal/runtime.jsonl', 'strategy-runtime/specs/strategy.json', 'journal/journal.sqlite3'):
+                file = root/relative
+                file.write_bytes(b'{"enabled":true,"fixture":"previous durable data"}')
+                files.append(file)
+        before = {file: file.read_bytes() for file in files}
+        for environment in ('demo', 'mainnet'):
+            for _ in range(2):
+                self.select(environment)
+                result, calls = self.update(environment, environment, True)
+                self.assertEqual(result.returncode, 0)
+                self.assertFalse(any('credentialRelay' in arg or arg in ('exec', 'restart', '--force-recreate') for call in calls for arg in call))
+        self.assertEqual(before, {file: file.read_bytes() for file in files})
+        # Post-deploy verification accepts an unchanged, still-authorized ABI.
         block = textwrap.dedent(WORKFLOW.read_text().split("python3 - <<'PYTHON'\n", 2)[2].split('\n          PYTHON', 1)[0])
-        for state in ('LOCKED', 'AUTHORIZED'):
-            response = io.BytesIO(json.dumps({'bybitEnvironment': 'mainnet', 'canExecuteLive': False}).encode())
-            with patch.dict(os.environ, {'BYBIT_ENV': 'mainnet'}), \
-                 patch('urllib.request.urlopen', return_value=response), \
-                 patch('subprocess.check_output', side_effect=[b'fixture-id', json.dumps({'state': state}).encode()]):
-                if state == 'LOCKED':
-                    exec(compile(block, str(WORKFLOW), 'exec'), {})
-                else:
-                    with self.assertRaises(SystemExit):
-                        exec(compile(block, str(WORKFLOW), 'exec'), {})
-        self.assertIn('--force-recreate', WORKFLOW.read_text())
-        self.assertIn('Stop the current stack before Deploy', WORKFLOW.read_text())
-
-    def test_refuses_shared_memory_unknown_environment_and_missing_mainnet_uid(self):
-        path = self.shared/'mainnet/abi'
-        path.rmdir()
-        path.symlink_to(self.shared/'abi', target_is_directory=True)
-        with self.assertRaises(SystemExit):
-            self.select('mainnet')
-        path.unlink()
-        path.mkdir()
-        with self.assertRaises(SystemExit):
-            self.select('other')
-        del self.env['ABI_MAINNET_EXPECTED_BYBIT_UID']
-        with self.assertRaises(SystemExit):
-            self.select('mainnet')
+        with patch.dict(os.environ, {'BYBIT_ENV': 'mainnet'}), patch('urllib.request.urlopen',
+                return_value=io.BytesIO(json.dumps({'bybitEnvironment': 'mainnet', 'canExecuteLive': True}).encode())):
+            exec(compile(block, str(WORKFLOW), 'exec'), {})
 
 
 if __name__ == '__main__':

@@ -133,7 +133,7 @@ change after the journal_service image is published.
 
 The `Deploy BBB` GitHub Actions workflow (manual `workflow_dispatch`,
 self-hosted Mac runner) pulls the exact images pinned in
-[`deploy/images.env`](deploy/images.env) and recreates the stack without
+[`deploy/images.env`](deploy/images.env) and updates the necessary containers without
 building from source:
 
 ```sh
@@ -155,7 +155,9 @@ the Deploy workflow explicitly sets dry-run off and live trading on).
 `deploy/images.env` manifest and the existing **Deploy BBB** workflow with an explicit
 `demo`/`mainnet` choice. Shared history/config stays at `BBB_DATA_ROOT`; trading memory
 uses that root for Demo and `BBB_DATA_ROOT/mainnet` for Mainnet. Stop the current stack
-before Deploy. ABI is recreated LOCKED; age authorization is a separate action.
+only before switching environments. Same-environment Deploy uses ordinary Compose up;
+unchanged ABI keeps its authorization. A recreated ABI starts LOCKED and is authorized
+separately through age, without restart.
 
 Mainnet requires the published ABI image from PR #58 pinned in the same common manifest;
 the current pins are preserved until that release. No separate Mainnet image set exists.
