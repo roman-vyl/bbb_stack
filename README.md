@@ -159,5 +159,5 @@ only before switching environments. Same-environment Deploy uses ordinary Compos
 unchanged ABI keeps its authorization. A recreated ABI starts LOCKED and is authorized
 separately through age, without restart.
 
-Mainnet requires the published ABI image from PR #58 pinned in the same common manifest;
-the current pins are preserved until that release. No separate Mainnet image set exists.
+The published ABI image from PR #58 is pinned in the common manifest for both
+environments. No separate Mainnet image set exists.
