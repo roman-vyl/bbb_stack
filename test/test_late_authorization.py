@@ -14,9 +14,8 @@ spec.loader.exec_module(client)
 
 class IntegrationConfigurationTests(unittest.TestCase):
     def test_compose_preserves_one_abi_without_plaintext_credentials(self):
-        env = dict(os.environ, ABI_EXPECTED_BYBIT_UID="123", BBB_DATA_ROOT="/tmp/bbb-auth-config-test")
-        result = subprocess.run(["docker", "compose", "-f", "docker-compose.yml", "-f", "docker-compose.demo.yml",
-                                 "-f", "docker-compose.deploy.yml", "--env-file", "deploy/images.env", "config", "--format", "json"],
+        env = dict(os.environ, ABI_EXPECTED_BYBIT_UID="123", BBB_DATA_ROOT="/tmp/bbb-auth-config-test", BBB_TRADING_DATA_ROOT="/tmp/bbb-auth-config-test")
+        result = subprocess.run(["docker", "compose", "-f", "docker-compose.yml", "-f", "docker-compose.deploy.yml", "--env-file", "deploy/images.env", "config", "--format", "json"],
                                 cwd=ROOT, env=env, check=True, capture_output=True)
         config = json.loads(result.stdout)
         abi = config["services"]["abi"]
