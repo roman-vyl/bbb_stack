@@ -1,0 +1,98 @@
+name: Deploy Mainnet
+
+on:
+  workflow_dispatch:
+    inputs:
+      first_launch:
+        description: 'First launch: require fresh trading memory and every strategy disabled'
+        type: boolean
+        default: true
+        required: true
+
+permissions:
+  contents: read
+  packages: read
+
+# Do not run Deploy Demo concurrently. Its existing workflow is intentionally unchanged.
+concurrency:
+  group: bbb-mainnet-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    env:
+      DOCKER_CONFIG: ${{ github.workspace }}/.docker-config-mainnet
+      COMPOSE_PROJECT_NAME: bbb_stack
+      FIRST_LAUNCH: ${{ inputs.first_launch }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Load only the Mainnet manifest and explicit data root
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          from scripts.mainnet_preflight import read_manifest
+          root = Path(os.environ['BBB_MAINNET_DATA_ROOT']).resolve(strict=True)
+          values = read_manifest(Path('deploy/images.mainnet.env'))
+          values['BBB_DATA_ROOT'] = str(root)
+          with open(os.environ['GITHUB_ENV'], 'a') as out:
+              for key, value in values.items():
+                  out.write(f'{key}={value}\n')
+          PY
+
+      - name: Read-only environment and data preflight
+        run: |
+          args=()
+          if [ "$FIRST_LAUNCH" = "true" ]; then args+=(--first-launch); fi
+          python3 scripts/mainnet_preflight.py "${args[@]}"
+
+      - name: Login to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p "$DOCKER_CONFIG"
+          ln -sf "$HOME/.docker/cli-plugins" "$DOCKER_CONFIG/cli-plugins"
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+      - name: Pull pinned images
+        run: |
+          docker pull "$MDS_IMAGE"
+          docker pull "$STRATEGY_ENGINE_IMAGE"
+          docker pull "$STRATEGY_RUNTIME_IMAGE"
+          docker pull "$ABI_IMAGE"
+          docker pull "$RESEARCH_IMAGE"
+          docker pull "$JOURNAL_IMAGE"
+
+      - name: Validate catalog with the pinned Runtime without starting the stack
+        run: |
+          docker run --rm -i --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges --entrypoint python \
+            -e PYTHONDONTWRITEBYTECODE=1 -e FIRST_LAUNCH \
+            --mount "type=bind,source=$BBB_MAINNET_DATA_ROOT/strategy-runtime/specs,target=/runtime/specs,readonly" \
+            "$STRATEGY_RUNTIME_IMAGE" - < scripts/validate_mainnet_catalog.py
+
+      - name: Recheck preflight and recreate the existing stack locked
+        run: |
+          args=()
+          if [ "$FIRST_LAUNCH" = "true" ]; then args+=(--first-launch); fi
+          python3 scripts/mainnet_preflight.py "${args[@]}"
+          docker compose -p bbb_stack -f docker-compose.yml -f docker-compose.deploy.yml \
+            -f docker-compose.mainnet.yml --env-file deploy/images.mainnet.env \
+            up -d --no-build --remove-orphans --force-recreate
+
+      - name: Wait for health and verify all image refs
+        run: |
+          python3 scripts/verify_mainnet_deploy.py
+
+      - name: Summary
+        if: always()
+        run: |
+          printf '%s\n' '## Mainnet deployment' \
+            '- No authorization or strategy enablement is performed by this workflow.' \
+            '- Verify step must confirm ABI LOCKED; data paths and credentials are omitted.' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Clean up local docker credentials
+        if: always()
+        run: rm -rf "$DOCKER_CONFIG"

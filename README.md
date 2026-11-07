@@ -26,24 +26,11 @@ docker compose up --build
 The base composition is safe by default: ABI runs dry-run, live trading is
 disabled, and no exchange credential file is loaded.
 
-For a Bybit Demo execution smoke, keep data and secrets outside the repository:
-
-```sh
-export BBB_DATA_ROOT=/Users/mcroma/BBB_data
-export BBB_SECRETS_ROOT=/Users/mcroma/BBB_secrets
-mkdir -p "$BBB_DATA_ROOT"/{abi,market-data,mds,strategy-runtime/journal,strategy-runtime/specs,research/runs,research/configs,journal}
-mkdir -p "$BBB_SECRETS_ROOT"/abi
-$EDITOR "$BBB_SECRETS_ROOT"/abi/bybit-demo.env
-docker compose -f docker-compose.yml -f docker-compose.demo.yml up --build
-```
-
-The Demo secret file is expected at
-`$BBB_SECRETS_ROOT/abi/bybit-demo.env` and should contain:
-
-```sh
-BYBIT_API_KEY=...
-BYBIT_API_SECRET=...
-```
+For Demo deployment, use the existing late authorization path: configure a trusted
+`ABI_EXPECTED_BYBIT_UID` and start with `docker-compose.demo.yml`. ABI starts LOCKED;
+keys are delivered separately through age/stdin/Unix socket by
+`scripts/authorize_abi.py`, without restart. Do not create plaintext key env files or
+set API keys in Compose/runner environment.
 
 The service build contexts default to sibling repositories:
 
@@ -152,11 +139,18 @@ docker compose -f docker-compose.yml -f docker-compose.demo.yml -f docker-compos
   --env-file deploy/images.env up -d --no-build --remove-orphans
 ```
 
-It requires `BBB_DATA_ROOT` and `BBB_SECRETS_ROOT` already set in the
-runner's own environment (not GitHub secrets) and never runs `down -v` —
+It requires `BBB_DATA_ROOT` and trusted Demo `ABI_EXPECTED_BYBIT_UID` already set in the
+runner's own environment and never runs `down -v` —
 durable state (MDS data, Runtime journal/state, ABI var, Research
 runs/configs) survives recreate. The workflow does not send bars,
 place/cancel Bybit orders, or change strategy specs; ABI stays in Demo
 mode (`BYBIT_ENV=demo`,
 dry-run disabled only via the existing `docker-compose.demo.yml`
 override, same as manual Demo runs today).
+
+## Mainnet preparation
+
+See [Mainnet cutover runbook](docs/mainnet-cutover.md). Mainnet has a separate override,
+manual workflow and manifest; Demo configuration and pins are preserved. Mainnet ABI pin
+is deliberately empty until its implementation is merged and Docker Publish succeeds.
+Deploy does not authorize ABI, enable strategies, prepare data or perform the cutover.

@@ -1,0 +1,47 @@
+# Apply LAST: base + deploy + mainnet. Deploy's !override also replaces MDS mounts.
+services:
+  abi:
+    mem_limit: ${ABI_MEMORY_LIMIT:-1g}
+    memswap_limit: ${ABI_MEMORY_LIMIT:-1g}
+    ulimits:
+      core:
+        soft: 0
+        hard: 0
+    tmpfs:
+      - /run/abi-authorization:rw,noexec,nosuid,size=64k,mode=0700,uid=1000,gid=1000
+    environment:
+      ABI_EXPECTED_BYBIT_UID: ${ABI_MAINNET_EXPECTED_BYBIT_UID:?Set the trusted Mainnet account UID}
+      ABI_DRY_RUN: "false"
+      ABI_LIVE_TRADING_ENABLED: "true"
+      BYBIT_ENV: "mainnet"
+      ABI_POSITION_SIZING_MODE: "risk"
+      ABI_BYBIT_LINEAR_POSITION_BINDING_MODE: "hedge"
+      ABI_EXCHANGE_FACTS_ENABLED: "true"
+      ABI_EXCHANGE_FACTS_DB_PATH: "/app/var/abi_exchange_facts_mainnet.sqlite3"
+
+  market-data-service:
+    volumes: !override
+      - type: bind
+        source: ${BBB_DEMO_DATA_ROOT:?Set the preserved Demo data root}/mds
+        target: /app/config
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${BBB_DEMO_DATA_ROOT:?Set the preserved Demo data root}/market-data
+        target: /data
+        bind:
+          create_host_path: false
+
+  research-service:
+    volumes: !override
+      - type: bind
+        source: ${BBB_DEMO_DATA_ROOT:?Set the preserved Demo data root}/research
+        target: /data
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${BBB_MAINNET_DATA_ROOT:?Set the separate Mainnet data root}/strategy-runtime/specs
+        target: /runtime-specs
+        bind:
+          create_host_path: false
