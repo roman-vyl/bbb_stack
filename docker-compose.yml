@@ -112,7 +112,8 @@ services:
       RUNTIME_JOURNAL_PATH: "/runtime/journal/runtime.jsonl"
       RUNTIME_STATE_PATH: "/runtime/state/runtime_state.jsonl"
       RUNTIME_STRATEGY_ENGINE_BASE_URL: "http://strategy-engine:8090"
-      RUNTIME_STRATEGY_ENGINE_TIMEOUT_SECONDS: "5"
+      # BTC SP109 LiveEntry measures ~10 s; allow cold full-history calculation.
+      RUNTIME_STRATEGY_ENGINE_TIMEOUT_SECONDS: "60"
       RUNTIME_ABI_BASE_URL: "http://abi:8787"
       RUNTIME_ABI_OPEN_POSITION_TIMEOUT_SECONDS: "5"
       RUNTIME_ABI_ENTRY_PACKAGE_TIMEOUT_SECONDS: "5"
