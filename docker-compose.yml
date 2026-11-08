@@ -207,15 +207,23 @@ services:
     read_only: true
     ports:
       - "127.0.0.1:8097:8097"
+    env_file:
+      - path: ${BBB_DATA_ROOT:?BBB_DATA_ROOT must be set}/journal/telegram.env
+        required: false
     environment:
       JOURNAL_HOST: "0.0.0.0"
       JOURNAL_PORT: "8097"
       JOURNAL_RUNTIME_SOURCE_PATH: "/sources/runtime/runtime.jsonl"
       JOURNAL_DB_PATH: "/data/journal.sqlite3"
+      JOURNAL_TELEGRAM_SPECS_PATH: "/sources/specs"
       # ABI read API for assembling closed trades (GET only). Soft link: no depends_on;
       # while ABI is down the trade rows stay incomplete and are retried.
       JOURNAL_ABI_BASE_URL: "http://abi:8787"
     volumes:
+      - type: bind
+        source: ${BBB_TRADING_DATA_ROOT:?Select the trading data root}/strategy-runtime/specs
+        target: /sources/specs
+        read_only: true
       # Source: Runtime's journal directory, read-only. The directory (not the file) is
       # mounted so that a replaced runtime.jsonl is seen.
       - type: bind

@@ -129,6 +129,28 @@ recorded in [`docs/verification-journal-service-v1.md`](docs/verification-journa
 The deploy override requires `JOURNAL_IMAGE`; its pin in `deploy/images.env` is a separate
 change after the journal_service image is published.
 
+### Telegram notifications
+
+The journal image runs Telegram in the same container when both variables are set
+in `${BBB_DATA_ROOT}/journal/telegram.env`:
+
+```dotenv
+JOURNAL_TELEGRAM_BOT_TOKEN=<BotFather token>
+JOURNAL_TELEGRAM_CHAT_ID=<destination chat ID>
+```
+
+Create this file on the Docker host (not in this repository), restrict it with
+`chmod 600`, and keep it across deployments. Compose reads it through an optional
+`env_file`: a missing file leaves Telegram disabled. A partial configuration
+fails journal startup. The shared file applies to the selected Demo or Mainnet
+journal; only the selected journal sends notifications.
+
+The selected `${BBB_TRADING_DATA_ROOT}/strategy-runtime/specs` is mounted read-only
+at `/sources/specs` to display the coin, anchor and width parameters. Telegram
+progress lives beside the journal database in the selected journal volume and
+survives recreation. Deployment keeps the journal image pinned in `deploy/images.env`.
+Compose 2.24.4+ is required (including optional env files and `!override`).
+
 ## Deployment (GHCR images, no local build)
 
 The `Deploy BBB` GitHub Actions workflow (manual `workflow_dispatch`,
